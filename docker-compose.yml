@@ -1,0 +1,47 @@
+services:
+  zd1200:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: local/zd1200-qemu:10.5.1.0.282
+    container_name: ${ZD_CONTAINER_NAME:-zd1200}
+    restart: unless-stopped
+    init: true
+
+    devices:
+      - /dev/kvm:/dev/kvm
+      - /dev/net/tun:/dev/net/tun
+
+    # The optional host/zd1200-bridge service creates the TAP device.
+    network_mode: host
+
+    environment:
+      CPU_MODEL: pentium3
+      MEMORY_MB: "2048"
+      NETWORK_MODE: tap
+      TAP_IF: ${ZD_TAP_IF:-tap-zd}
+      GUEST_IP: ${ZD_GUEST_IP:-192.168.50.10}
+      # Work around the 2.6.32 tickless-idle spin demonstrated in cpu-study.
+      KERNEL_EXTRA: nohz=off
+      WEB_WAIT_SECONDS: "600"
+      VM_SNAPSHOT: "0"
+
+    volumes:
+      - ${ZD_IMAGE_DIR:-./image}:/opt/zd1200/image:ro
+      - zd1200-state:/var/lib/zd1200
+
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 20s
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -kfsS --max-time 5 https://${ZD_GUEST_IP:-192.168.50.10}/admin10/login.jsp >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 8s
+      start_period: 10m
+      retries: 3
+
+volumes:
+  zd1200-state:

@@ -1,0 +1,10 @@
+#!/bin/sh
+/bin/busybox mount -t proc proc /proc
+/bin/busybox mount -t sysfs sysfs /sys 2>/dev/null || true
+/bin/busybox mount -t tmpfs tmpfs /tmp
+
+mknod -m 600 /dev/console c 5 1 2>/dev/null || true
+mknod /dev/hda b 3 0 2>/dev/null || true
+mknod /dev/hda2 b 3 2 2>/dev/null || true
+
+exec /bin/boot-handoff

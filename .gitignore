@@ -1,0 +1,32 @@
+# Generated VM state and firmware assets
+synthetic-cf.img
+*.qcow2
+*.qcow2.*
+qemu-tmp/
+image/
+archive/
+rootfs/
+bootinitramfs.runtime.gz
+bootinitramfs.runtime.gz.sha256
+
+# Original packages, diagnostics and logs
+*.img
+*.tgz
+*.tar
+*.tar.gz
+*.zip
+analysis-*/
+*.log
+core
+core.*
+*.tmp
+*.bak
+
+# Python, editor and local secret state
+__pycache__/
+*.py[cod]
+.DS_Store
+*~
+.env
+*.key
+*.pem

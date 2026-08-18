@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Create an unnumbered USB-Ethernet -> bridge -> TAP path for the VM.
+set -euo pipefail
+
+usb_if="${ZD_USB_IF:?Set ZD_USB_IF in /etc/default/zd1200-bridge}"
+expected_mac="${ZD_USB_MAC:-}"
+bridge_if="${ZD_BRIDGE_IF:-br-zd}"
+tap_if="${ZD_TAP_IF:-tap-zd}"
+
+fail() { echo "zd1200-bridge: $*" >&2; exit 1; }
+(( EUID == 0 )) || fail "must run as root"
+
+disable_ip() {
+    local interface="$1"
+    [ ! -e "/proc/sys/net/ipv6/conf/$interface/disable_ipv6" ] ||
+        printf '1\n' > "/proc/sys/net/ipv6/conf/$interface/disable_ipv6"
+    ip address flush dev "$interface" || true
+}
+
+start_bridge() {
+    [ -e "/sys/class/net/$usb_if" ] || fail "missing USB interface $usb_if"
+    if [ -n "$expected_mac" ]; then
+        actual_mac="$(tr '[:upper:]' '[:lower:]' < "/sys/class/net/$usb_if/address")"
+        [ "$actual_mac" = "${expected_mac,,}" ] ||
+            fail "$usb_if has MAC $actual_mac, expected $expected_mac"
+    fi
+    if ip route show default | grep -qE "(^| )dev ${usb_if}( |$)"; then
+        fail "refusing to repurpose default-route interface $usb_if"
+    fi
+
+    if [ ! -e "/sys/class/net/$bridge_if" ]; then
+        ip link add name "$bridge_if" type bridge
+    fi
+    [ -d "/sys/class/net/$bridge_if/bridge" ] ||
+        fail "$bridge_if exists but is not a bridge"
+    ip link set dev "$bridge_if" type bridge stp_state 0 forward_delay 0
+    disable_ip "$bridge_if"
+
+    ip link set dev "$usb_if" down
+    disable_ip "$usb_if"
+    ip link set dev "$usb_if" master "$bridge_if"
+    ip link set dev "$usb_if" promisc on
+
+    if [ ! -e "/sys/class/net/$tap_if" ]; then
+        ip tuntap add dev "$tap_if" mode tap user root
+    fi
+    ip tuntap show dev "$tap_if" 2>/dev/null | grep -q "^${tap_if}:.*tap" ||
+        fail "$tap_if exists but is not a TAP interface"
+    disable_ip "$tap_if"
+    ip link set dev "$tap_if" master "$bridge_if"
+
+    ip link set dev "$bridge_if" up
+    ip link set dev "$tap_if" up
+    ip link set dev "$usb_if" up
+    echo "ZD1200 layer-2 path ready: $usb_if -> $bridge_if -> $tap_if"
+}
+
+stop_bridge() {
+    if [ -e "/sys/class/net/$usb_if" ]; then
+        ip link set dev "$usb_if" down || true
+        ip link set dev "$usb_if" nomaster || true
+        ip link set dev "$usb_if" promisc off || true
+        ip address flush dev "$usb_if" || true
+    fi
+    if [ -e "/sys/class/net/$tap_if" ]; then
+        ip link set dev "$tap_if" down || true
+        ip link set dev "$tap_if" nomaster || true
+        ip tuntap del dev "$tap_if" mode tap || true
+    fi
+    if [ -e "/sys/class/net/$bridge_if" ]; then
+        ip link set dev "$bridge_if" down || true
+        ip link del dev "$bridge_if" type bridge || true
+    fi
+}
+
+case "${1:-}" in
+    start) start_bridge ;;
+    stop) stop_bridge ;;
+    restart) stop_bridge; start_bridge ;;
+    *) fail "usage: $0 {start|stop|restart}" ;;
+esac

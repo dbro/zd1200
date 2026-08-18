@@ -1,0 +1,2 @@
+::sysinit:/bin/boot-handoff
+::respawn:/bin/sh

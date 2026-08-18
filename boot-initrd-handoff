@@ -1,0 +1,222 @@
+#!/bin/sh
+
+/bin/busybox mount -t ext2 -o rw /dev/hda2 /newroot || {
+    echo "Could not mount /dev/hda2"
+    exec /bin/sh
+}
+
+echo "BOOT-HANDOFF: mounted /dev/hda2"
+/bin/busybox ls -l /newroot/sbin/init
+/bin/busybox ls -ld /newroot/etc/passwd /newroot/etc/group /newroot/etc/webs.conf /newroot/etc/airespider/webs.conf /newroot/writable >/dev/console 2>&1 || true
+
+# The production data partition is ReiserFS and the vendor mount command uses
+# its `nolog` option. Our disposable data partition is legacy ext2, so remove
+# that one incompatible option from the disposable root copy.
+/bin/busybox sed -i 's/,nolog//' /newroot/etc/init.d/sys_init 2>/dev/null || true
+# The real appliance is designed around orderly hardware shutdown.  Our ext2
+# lab volume must also tolerate a terminated QEMU process, so repair it before
+# mounting.  Keep the vendor's async mount behavior: forcing synchronous I/O
+# makes its database migration and adapter startup impractically slow.
+/newroot/sbin/e2fsck -p /dev/hda4 >/dev/console 2>&1
+fsck_status=$?
+if [ "$fsck_status" -ge 4 ]; then
+    echo "BOOT-HANDOFF: hda4 filesystem repair failed ($fsck_status)" >/dev/console
+fi
+# The synthetic partition table gives hda4 about 1.43 GiB, but its seed is a
+# byte-for-byte copy of the 143 MiB root filesystem. Copying the seed does not
+# grow its ext2 superblock, leaving only enough free space for a truncated AP
+# image. Expand the existing, checked filesystem in place to its partition
+# boundary. Repeating resize2fs on later boots is harmless.
+/newroot/sbin/resize2fs /dev/hda4 >/dev/console 2>&1
+resize_status=$?
+if [ "$resize_status" -ne 0 ]; then
+    echo "BOOT-HANDOFF: hda4 filesystem expansion failed ($resize_status)" >/dev/console
+else
+    echo "BOOT-HANDOFF: hda4 filesystem spans its data partition" >/dev/console
+fi
+/bin/busybox sed -i 's/rw,sync,noatime/rw,async,noatime/' /newroot/etc/init.d/sys_init 2>/dev/null || true
+
+# Factory setup can block in legacy SSH host-key generation while the new VM
+# has very little entropy. Keep the generators inert initially; configured
+# boots restore the stock Dropbear multicall symlink below.
+for keygen in /newroot/bin/ssh-keygen /newroot/usr/bin/dropbearkey; do
+    /bin/busybox rm -f "$keygen" 2>/dev/null || true
+    /bin/busybox sh -c "printf '#!/bin/sh\\nexit 0\\n' > '$keygen'"
+    /bin/busybox chmod 755 "$keygen"
+done
+
+# The ext2 data volume is seeded from the root image only to obtain a
+# compatible filesystem. Remove the root image's /writable symlinks so it
+# behaves like a clean data volume.
+/bin/busybox mkdir -p /data
+factory_web_patch=1
+if /bin/busybox mount -t ext2 -o rw /dev/hda4 /data 2>/dev/null; then
+    if [ ! -f /data/.zd-lab-initialized ]; then
+        for p in \
+            /data/.ssh /data/.rnd /data/fl \
+            /data/etc/raddb /data/etc/smb.conf /data/etc/airespider-images \
+            /data/etc/config /data/etc/config/passwd /data/etc/krb5.conf /data/etc/kdc.conf \
+            /data/etc/airespider /data/etc/random-seed /data/etc/hosts \
+            /data/etc/passwd /data/etc/share /data/writable; do
+            /bin/busybox rm -f "$p" 2>/dev/null || true
+        done
+        /bin/busybox mkdir -p \
+            /data/etc/airespider-images/oem /data/etc/airespider-images/usb_software \
+            /data/etc/airespider/certs/ca /data/etc/airespider/dropbear \
+            /data/etc/airespider/ssh /data/etc/airespider/dump \
+            /data/etc/config /data/etc/system /data/data/dropbear
+        /bin/busybox mkdir -p /data/etc/config
+        /bin/busybox mkdir -p /data/etc/airespider/certs
+        /bin/busybox cp -f /lab-certs/webaccert.pem /data/etc/airespider/certs/webaccert.pem 2>/dev/null || true
+        /bin/busybox cp -f /lab-certs/webackey.pem /data/etc/airespider/certs/webackey.pem 2>/dev/null || true
+        /bin/busybox cp -f /lab-certs/webaccert.pem /data/etc/airespider/certs/cacert.pem 2>/dev/null || true
+        # setupRootCA() creates this marker only after certificate setup succeeds.
+        # Without it, emfd's xGetCertCN path aborts during adapter initialization.
+        /bin/busybox touch /data/etc/airespider/certs/ok
+        /bin/busybox sh -c 'printf "root:\$1\$zdroot\$cqAOkGzVR3xPO6tSt8LH0.:0:0:root:/root:/bin/sh\nadmin:\$1\$zdadmin\$vL6u83u.zoHHuQc8U.wuS0:1000:0:admin:/home/admin:/bin/sh\nsuper:\$1\$zdroot\$cqAOkGzVR3xPO6tSt8LH0.:0:0:super:/root:/bin/sh\nnobody:*:65534:65534:nobody:/:/bin/false\n" > /data/etc/config/passwd'
+        /bin/busybox sh -c 'printf "root:x:0:\nadmin:x:0:\nnobody:x:65534:\n" > /data/etc/config/group'
+        /bin/busybox touch /data/.zd-lab-initialized
+    fi
+    # The root filesystem deliberately omits the AP image and aidfs payloads;
+    # the vendor upgrade installs them on the writable partition. Seed the
+    # complete, checksum-verified 10.5.1 payload once so R600, R650, R850 and
+    # the other models listed by this release are available to the controller.
+    payload=/zd1051-payload
+    payload_marker=/data/.zd-10.5.1.0.282-payload-installed
+    firmware_target=/data/etc/airespider-images/firmwares
+    if [ ! -f "$payload_marker" ] && [ -d "$payload/firmwares" ] \
+        && [ -d "$payload/aidfs" ] && [ -f "$payload/ap-models" ] \
+        && [ -f "$payload/file_list.txt" ]; then
+        echo "BOOT-HANDOFF: installing ZoneDirector 10.5.1 payload" >/dev/console
+        /bin/busybox rm -rf "$firmware_target" /data/aidfs
+        /bin/busybox mkdir -p "$firmware_target" /data/aidfs
+        /bin/busybox cp -a "$payload/firmwares/." "$firmware_target/" >/dev/console 2>&1
+        /bin/busybox cp -a "$payload/aidfs/." /data/aidfs/ >/dev/console 2>&1
+        /bin/busybox cp -f "$payload/file_list.txt" "$firmware_target/file_list.txt"
+        /bin/busybox cp -f "$payload/ap-models" /data/etc/airespider-images/ap-models
+        if [ -f "$firmware_target/r600/control" ] \
+            && [ -f "$firmware_target/r650/control" ] \
+            && [ -f "$firmware_target/r850/control" ] \
+            && [ -d /data/aidfs/web/help ]; then
+            /bin/busybox touch "$payload_marker"
+            echo "BOOT-HANDOFF: ZoneDirector 10.5.1 payload installed" >/dev/console
+        else
+            echo "BOOT-HANDOFF: ZoneDirector 10.5.1 payload installation failed" >/dev/console
+        fi
+    fi
+    # The factory wizard's SessionCheck path leaves session["cid"] empty, but
+    # its two AJAX modules still reject requests unless a CSRF header matches
+    # that CID.  Use narrowly patched copies until the completed wizard writes
+    # an explicit non-factory state.  A normal configured boot gets originals.
+    if [ -f /data/etc/airespider/system.xml ] \
+        && /bin/busybox grep -q 'is-factory="false"' /data/etc/airespider/system.xml; then
+        factory_web_patch=0
+    fi
+    /bin/busybox umount /data 2>/dev/null || true
+fi
+
+# Match the original rescue environment: disable the physical watchdog before
+# transferring control to the installed ZD userspace.
+echo D > /dev/watchdog 2>/dev/null || true
+
+# The synthetic board reports COB7402, which makes the stock network script
+# choose igb2. The QEMU e1000e device is supported by the bundled e1000e
+# module, so load it before normal userspace hardware detection runs.
+/bin/busybox insmod /newroot/lib/modules/2.6.32.24/kernel/drivers/net/e1000e/e1000e.ko \
+    >/dev/console 2>&1 || true
+
+# Add a disposable diagnostic startup script. The disk is opened through
+# QEMU's snapshot mode, so this does not alter the source image.  The script
+# is supplied as a regular initrd file; constructing it with nested shell
+# quoting here caused the old S98/S99 hook to be rejected by BusyBox.
+if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
+    /bin/busybox mkdir -p /newroot/etc/init.d
+    # /bin/MODEL normally points at /proc/v54bsp/model.  The synthetic
+    # boarddata is sufficient for the kernel driver to start, but leaves that
+    # proc entry empty.  libemf's OEM-string loader assumes the first line is
+    # non-empty and otherwise calls pstrlwr(NULL), crashing emfd before it can
+    # create /tmp/esp or launch webs.  Supply the identity of the hardware
+    # whose firmware image this is; QEMU snapshot mode keeps this disposable.
+    /bin/busybox rm -f /newroot/bin/MODEL
+    /bin/busybox sh -c 'printf "zd1200\n" > /newroot/bin/MODEL'
+    /bin/busybox chmod 444 /newroot/bin/MODEL
+    /bin/busybox ln -sf /bin/ruckus_cli2 /newroot/bin/rkscli
+    # Bring-up diagnostics are deliberately absent from normal boots.  Their
+    # repeated process/map dumps noticeably slow TCG emulation and flood the
+    # serial log once the controller is known to initialize correctly.
+    /bin/busybox rm -f /newroot/etc/init.d/S98zd_diag
+    /bin/busybox rm -f /newroot/etc/init.d/S98backend_diag
+    /bin/busybox cp -f /zd-memory-snapshot.sh /newroot/etc/init.d/S98memory_snapshot
+    /bin/busybox chmod 755 /newroot/etc/init.d/S98memory_snapshot
+    if [ ! -f /newroot/etc/init.d/controller.vendor ]; then
+        /bin/busybox cp -f /newroot/etc/init.d/controller /newroot/etc/init.d/controller.vendor
+    fi
+    /bin/busybox cp -f /zd-controller-wrapper.sh /newroot/etc/init.d/controller
+    /bin/busybox chmod 755 /newroot/etc/init.d/controller
+    # There is no real CF-card GRUB environment in this VM. Make the vendor
+    # reset-flag step a no-op before returning the synthetic root read-only.
+    /bin/busybox sh -c 'printf "#!/bin/sh\nexit 0\n" > /newroot/etc/init.d/S70resetflag'
+    /bin/busybox chmod 755 /newroot/etc/init.d/S70resetflag
+    # ZD 10.2 transfers AP images over FTP. An earlier VM workaround disabled
+    # S45vsftpd, causing accepted APs to retry the image download 16 times and
+    # fail with update error 176. Restore the small stock startup script every
+    # boot because the old no-op was written through S45vsftpd's symlink and
+    # therefore replaced the persistent target file itself.
+    /bin/busybox cat > /newroot/etc/init.d/vsftpd <<'ZD_VSFTPD_INIT'
+#!/bin/sh
+conf_file=$2
+case "$1" in
+    start)
+        if [ -x /usr/sbin/vsftpd ]; then
+            echo "Starting vsftpd ..."
+            /usr/sbin/vsftpd ${conf_file}
+            killall ftpdMon.sh 2>/dev/null || true
+            /bin/ftpdMon.sh &
+        fi
+        ;;
+    stop)
+        killall ftpdMon.sh 2>/dev/null || true
+        killall vsftpd 2>/dev/null || true
+        ;;
+    *)
+        echo "Usage: $0 {start|stop}" >&2
+        ;;
+esac
+ZD_VSFTPD_INIT
+    /bin/busybox chmod 755 /newroot/etc/init.d/vsftpd
+    /bin/busybox rm -f /newroot/etc/init.d/S45vsftpd
+    /bin/busybox ln -s vsftpd /newroot/etc/init.d/S45vsftpd
+    if [ "$factory_web_patch" -eq 0 ]; then
+        # The stock image has no OpenSSH ssh-keygen. Dropbear's key generator
+        # is a multicall symlink to /usr/sbin/dropbear. sys_init will generate
+        # a persistent RSA host key only when one is missing, after which
+        # S60dropbear provides the normal ZD administrative SSH service.
+        /bin/busybox rm -f /newroot/bin/ssh-keygen /newroot/usr/bin/dropbearkey
+        /bin/busybox ln -s ../sbin/dropbear /newroot/usr/bin/dropbearkey
+        echo "BOOT-HANDOFF: restored configured-system Dropbear SSH" >/dev/console
+    fi
+    # The vendor irqbalance daemon expects physical-platform IRQ topology and
+    # can stall indefinitely under QEMU. Keep the rest of controller startup.
+    /bin/busybox sed -i 's#^.*\/usr/sbin/irqbalance$#        true#' /newroot/etc/ac_init.sh
+    /bin/busybox sed -i 's#echo "start irqbalance\.\.\."#echo "start irqbalance disabled in VM..."; return#' /newroot/etc/ac_init.sh
+    if [ "$factory_web_patch" -eq 1 ]; then
+        # The 10.5.1 modules no longer contain the 10.2 conditional branch
+        # that required a one-byte factory-session compatibility patch. Keep
+        # the vendor modules intact unless a boot test proves otherwise.
+        echo "BOOT-HANDOFF: using stock 10.5.1 factory web modules" >/dev/console
+    else
+        echo "BOOT-HANDOFF: configured system" >/dev/console
+    fi
+    if [ -f /newroot/bin/webs.vendor ]; then
+        /bin/busybox mv -f /newroot/bin/webs.vendor /newroot/bin/webs
+        /bin/busybox chmod 755 /newroot/bin/webs
+    fi
+    /bin/busybox mount -o remount,ro /newroot 2>/dev/null || true
+fi
+
+echo "BOOT-HANDOFF: switching to installed root"
+exec /bin/pivot-exec /newroot || {
+    echo "BOOT-HANDOFF: chroot helper failed"
+    exec /bin/sh
+}
+echo "BOOT-HANDOFF: executing /sbin/init"

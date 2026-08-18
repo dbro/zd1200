@@ -1,0 +1,15 @@
+[Unit]
+Description=Layer-2 USB bridge for the virtual ZoneDirector 1200
+Wants=network-pre.target
+After=systemd-udev-settle.service
+Before=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-/etc/default/zd1200-bridge
+ExecStart=/usr/local/sbin/zd1200-bridge start
+ExecStop=/usr/local/sbin/zd1200-bridge stop
+
+[Install]
+WantedBy=multi-user.target
