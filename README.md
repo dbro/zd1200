@@ -14,8 +14,9 @@ The included [MIT License](LICENSE) applies only to this repository's original
 glue code and documentation. It grants no rights to Ruckus materials.
 
 `prepare-vendor-image.sh` accepts a user-supplied *decrypted* archive and
-creates the ignored `image/` directory locally. It expects this exact archive
-SHA-256:
+creates the ignored `image/` directory locally. An online decryption tool
+is [here](https://ms264556.net/ruckus/DecryptRuckusBackups). It expects
+this exact archive SHA-256:
 
 ```
 64dfbf4d67cc65cafa0e258e426c664c7387b1219209ec893b9b1e41ab202cb8
@@ -109,7 +110,7 @@ normal KVM operation.
 ## Optional future improvements
 
 1. Add a stable synthetic serial number if a blank value creates a practical
-   problem. First locate the exact board-data field and checksum format.
+   problem. [See these instructions for assigning serial number, MAC, etc](https://ms264556.net/ruckus/MigrateDeadZoneDirector#restore-your-old-serial-number-and-mac) (thank you, @ms264556!)
 2. Replace the fixed seeded Unix password hashes with per-deployment secrets,
    but only after confirming the factory wizard, recovery, and Dropbear flows
    remain recoverable.
