@@ -21,6 +21,9 @@ sources=(
 if [ -f "$payload" ]; then
     sources+=("$payload")
 fi
+if [ -d "$work_dir/zd-dropbear2222" ]; then
+    sources+=("$work_dir"/zd-dropbear2222/*)
+fi
 
 signature="$(sha256sum "${sources[@]}" | sha256sum | awk '{print $1}')"
 if [ -s "$output" ] && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$signature" ]; then
@@ -45,6 +48,14 @@ if [ -f "$payload" ]; then
     # effective UID 0 and tries to restore the archive's uid/gid 1000, turning
     # an otherwise successful extraction into a fatal error.
     tar --no-same-owner -xzf "$payload" -C "$staging/zd1051-payload"
+fi
+if [ -d "$work_dir/zd-dropbear2222" ]; then
+    mkdir -p "$staging/zd-dropbear2222"
+    cp -a "$work_dir/zd-dropbear2222/." "$staging/zd-dropbear2222/"
+    chmod 755 "$staging/zd-dropbear2222/dropbear" \
+        "$staging/zd-dropbear2222/dropbearkey" \
+        "$staging/zd-dropbear2222/dropbearconvert" \
+        "$staging/zd-dropbear2222/sftp-server"
 fi
 
 chmod 755 "$staging/bin/boot-handoff"

@@ -2,7 +2,7 @@
 set -u
 
 work_dir="$(cd "$(dirname "$0")" && pwd)"
-kernel="$work_dir/image/bzImage"
+kernel="${KERNEL:-$work_dir/image/bzImage}"
 rootfs="$work_dir/image/rootfs.ext2"
 initrd="${INITRD:-$work_dir/image/restoreinitramfs.gz}"
 synthetic_disk="$work_dir/synthetic-cf.img"
@@ -43,9 +43,15 @@ fi
 case "${NETWORK_MODE:-user}" in
     user)
         hostfwd_addr="${HOSTFWD_ADDR:-127.0.0.1}"
-        net_args=( -net "user,hostfwd=tcp:${hostfwd_addr}:${HTTP_PORT:-28080}-:80" )
+        extra=""
+        if [ -n "${EXTRA_HOSTFWD:-}" ]; then
+            for spec in ${EXTRA_HOSTFWD}; do
+                extra="${extra},hostfwd=${spec}"
+            done
+        fi
+        net_args=( -net "user,hostfwd=tcp:${hostfwd_addr}:${HTTP_PORT:-28080}-:80${extra}" )
         if [ -n "${HTTPS_PORT-28443}" ]; then
-            net_args[1]="user,hostfwd=tcp:${hostfwd_addr}:${HTTP_PORT:-28080}-:80,hostfwd=tcp:${hostfwd_addr}:${HTTPS_PORT}-:443"
+            net_args[1]="user,hostfwd=tcp:${hostfwd_addr}:${HTTP_PORT:-28080}-:80,hostfwd=tcp:${hostfwd_addr}:${HTTPS_PORT}-:443${extra}"
         fi
         ;;
     tap)
