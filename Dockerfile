@@ -25,6 +25,7 @@ COPY boot-initrd-handoff \
      make-synthetic-cf.py \
      run-zd1200-qemu.sh \
      run-zd1200-web.sh \
+     write-boarddata.py \
      zd1200-patch.gdb \
      /opt/zd1200/
 

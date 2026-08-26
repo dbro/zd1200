@@ -21,6 +21,9 @@ services:
       NETWORK_MODE: tap
       TAP_IF: ${ZD_TAP_IF:-tap-zd}
       GUEST_IP: ${ZD_GUEST_IP:-192.168.50.10}
+      # Board data written into the CF image: serial + base MAC (MAC2=MAC1+1).
+      ZD_SERIAL: ${ZD_SERIAL:-123456000789}
+      ZD_MAC1: ${ZD_MAC1:-01:01:01:01:01:02}
       # Work around the 2.6.32 tickless-idle spin demonstrated in cpu-study.
       KERNEL_EXTRA: nohz=off
       WEB_WAIT_SECONDS: "600"
