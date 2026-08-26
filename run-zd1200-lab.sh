@@ -67,7 +67,7 @@ fi
 
 echo "== patched kernel =="
 if [ "$REBUILD_KERNEL" = 1 ] || [ ! -f image/bzImage.patched ]; then
-    python3 patch-kernel.py
+    python3 patch_binary_artifact.py
 else
     echo "image/bzImage.patched present (--rebuild-kernel to rebuild)"
 fi

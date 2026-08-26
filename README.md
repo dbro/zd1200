@@ -43,6 +43,56 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
+`run-zd1200-lab.sh` invokes the generalized binary patcher when it builds
+`image/bzImage.patched`. The default invocation preserves the former
+`patch-kernel.py` behavior:
+
+```sh
+python3 patch_binary_artifact.py
+```
+
+## Generalized binary patcher
+
+Binary matching and container handling live in `patch_binary_artifact.py`.
+The reusable artifact IDs and their patch definitions live separately in
+`binary_patch_catalog.py`. Every patch names an artifact ID, so all patches for
+one payload share its extraction and rebuild handler and cannot accidentally be
+mixed with patches for another payload.
+
+The current catalog defines:
+
+```text
+zd1200_kernel_elf  ELF32 x86 kernel inside the vendor bzImage gzip member
+r600_wlan_ko       raw ELF32 big-endian MIPS R600 wlan.ko
+```
+
+The ZD1200 handler locates and decompresses the kernel ELF, applies all five
+registered patches, recompresses it, pads the gzip member to its original
+length, and splices it back without moving the vendor loader tail. Defaults are
+compatible with the lab launcher:
+
+```sh
+python3 patch_binary_artifact.py \
+  --artifact zd1200_kernel_elf \
+  --in image/bzImage \
+  --out image/bzImage.patched
+```
+
+The R600 rule operates on an already-extracted module; BL7 filesystem
+extraction and rebuilding remain a separate packaging step:
+
+```sh
+python3 patch_binary_artifact.py \
+  --artifact r600_wlan_ko \
+  --in /path/to/wlan.ko \
+  --out /path/to/wlan.ko.patched
+```
+
+Signatures support `??` wildcard bytes. The patcher requires each original or
+already-patched signature to occur exactly once, rejects mixed-artifact rule
+sets, checks for overlapping writes, and verifies all patched signatures before
+writing the output. Reapplying a patch is idempotent.
+
 `ZD_IMAGE_DIR` in `.env` defaults to `./image`. Set it to an external absolute
 path if the large, generated files should live elsewhere. `.env`, `image/`, VM
 disks, logs and state are excluded by `.gitignore`.
@@ -99,7 +149,8 @@ boot-initrd-handoff           boot-initrd-init               boot-initrd-inittab
 make-boot-initrd.sh           make-runtime-initrd.sh         prepare-vendor-image.sh
 make-synthetic-cf.py          pivot-exec.S                   run-zd1200-qemu.sh
 run-zd1200-web.sh             zd-controller-wrapper.sh       zd-memory-snapshot.sh
-zd1200-patch.gdb              limit-process-cpu.py
+zd1200-patch.gdb              limit-process-cpu.py            patch_binary_artifact.py
+binary_patch_catalog.py
 host/zd1200-bridge            host/zd1200-bridge.service     host/zd1200-bridge.env.example
 README.md                     LICENSE                         .gitignore                     .dockerignore
 ```
