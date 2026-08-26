@@ -65,6 +65,15 @@ if [ ! -f "$synthetic_disk" ]; then
     echo "Creating persistent synthetic CF base image in $state_dir ..."
     SYNTHETIC_DISK="$synthetic_disk" python3 "$work_dir/make-synthetic-cf.py"
 fi
+# The serial number and MACs live in the board-data records on the CF image
+# (read by the kernel's v54bsp driver; NOT patched into the kernel).  Rewrite
+# them on every launch so env changes take effect.  MAC2 = MAC1 + 1.
+python3 "$work_dir/write-boarddata.py" \
+    --disk "$synthetic_disk" \
+    --serial "${ZD_SERIAL:-123456000789}" \
+    --mac "${ZD_MAC1:-01:01:01:01:01:02}" \
+    --model "${ZD_MODEL:-ZD1200}" \
+    --customer "${ZD_CUSTOMER:-ruckus}"
 if [ ! -f "$persistent_disk" ]; then
     qemu-img create -q -f qcow2 -F raw -b "$synthetic_disk" "$persistent_disk"
     echo "Created persistent VM disk overlay: $persistent_disk"

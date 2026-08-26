@@ -11,6 +11,7 @@
 #   ./run-zd1200-lab.sh --rebuild-kernel# force the kernel patch step
 #   ./run-zd1200-lab.sh --wait [SECS]   # launch, then poll the web login page
 #   ACCEL=kvm ./run-zd1200-lab.sh       # override accelerator (default tcg)
+#   ZD_SERIAL=... ZD_MAC1=... ./run-zd1200-lab.sh   # board data (MAC2=MAC1+1)
 set -eu
 
 work_dir="$(cd "$(dirname "$0")" && pwd)"
@@ -82,6 +83,15 @@ fi
 if [ ! -f synthetic-cf.img ]; then
     python3 make-synthetic-cf.py
 fi
+# The serial number and MACs live in the board-data records on the CF image
+# (read by the kernel's v54bsp driver; NOT patched into the kernel).  Rewrite
+# them on every launch so env changes take effect.  MAC2 = MAC1 + 1.
+python3 write-boarddata.py \
+    --disk synthetic-cf.img \
+    --serial "${ZD_SERIAL:-123456000789}" \
+    --mac "${ZD_MAC1:-01:01:01:01:01:02}" \
+    --model "${ZD_MODEL:-ZD1200}" \
+    --customer "${ZD_CUSTOMER:-ruckus}"
 if [ ! -f zd1200-vm.qcow2 ]; then
     qemu-img create -q -f qcow2 -F raw -b synthetic-cf.img zd1200-vm.qcow2
     echo "created qcow2 overlay: zd1200-vm.qcow2"

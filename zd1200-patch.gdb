@@ -21,22 +21,10 @@ set {unsigned char}0xc123d06e = 0x14
 set {unsigned char}0xc123d06f = 0xff
 set {unsigned char}0xc123d070 = 0xff
 set {unsigned char}0xc123d071 = 0xff
-# Synthetic board-data query: MAC 02:52:54:12:00:01 and success.
-set {unsigned char}0xc123bc20 = 0xc7
-set {unsigned char}0xc123bc21 = 0x02
-set {unsigned char}0xc123bc22 = 0x02
-set {unsigned char}0xc123bc23 = 0x52
-set {unsigned char}0xc123bc24 = 0x54
-set {unsigned char}0xc123bc25 = 0x12
-set {unsigned char}0xc123bc26 = 0x66
-set {unsigned char}0xc123bc27 = 0xc7
-set {unsigned char}0xc123bc28 = 0x42
-set {unsigned char}0xc123bc29 = 0x04
-set {unsigned char}0xc123bc2a = 0x00
-set {unsigned char}0xc123bc2b = 0x01
-set {unsigned char}0xc123bc2c = 0x31
-set {unsigned char}0xc123bc2d = 0xc0
-set {unsigned char}0xc123bc2e = 0xc3
+# NOTE: serial number and MACs are NOT patched here.  The v54bsp driver
+# reads them from the board-data records on the CompactFlash image (written
+# by write-boarddata.py: magic "SKCR" at region2_start+0x8000), so the
+# stock board-data query code returns the CF-provided values as-is.
 disable 1
 continue
 end
