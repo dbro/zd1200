@@ -354,8 +354,11 @@ R600 BL7 container, recalculating offsets, payload MD5, and header checksum;
 signed ISI/FSI images fail closed. SquashFS handling and AP-module integration
 remain the next packaging task. The standalone `patch_r600_bl7.py` now
 invokes compatible GPL SquashFS tools, patches exactly one R600 `wlan.ko`, and
-rebuilds a new UI image without overwriting the input; nested payload
-integration and non-root extraction behavior still require validation.
+rebuilds a new UI image without overwriting the input. The bundle builder now
+uses it for unsigned R600 payloads when both tool paths are supplied; signed
+ISI/FSI payloads fail closed and still require a signing-bypass workflow.
+Non-root extraction behavior and a complete signed-image user path remain to be
+validated.
 
 ### M3 — Version-independent runtime enhancements
 

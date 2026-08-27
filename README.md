@@ -135,8 +135,9 @@ python3 patch_r600_bl7.py \
 
 The command patches exactly one `lib/modules/*/net/wlan.ko`, writes a new
 unsigned image, and leaves the input untouched. It does not process signed
-ISI/FSI images. The standalone command is not yet wired into the generated
-bundle's nested AP payload.
+ISI/FSI images; signed ZD-delivered AP payloads therefore require an ISI/signing
+bypass workflow before this operation. The bundle builder accepts the same two
+tool paths to patch unsigned R600 images in its nested AP payload.
 
 ```sh
 python3 patch_binary_artifact.py \

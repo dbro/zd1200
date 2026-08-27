@@ -21,6 +21,7 @@ import zipfile
 from pathlib import Path
 
 from patch_binary_artifact import apply_rules, extract_artifact, rebuild_artifact, rules_for_artifact
+from patch_r600_bl7 import patch_image as patch_r600_image
 from release_manifest import RELEASES, ReleaseManifest, release_by_id
 from ruckus_tac_decrypt import decrypt_file
 from verify_release_archive import verify_decrypted_archive, verify_encrypted_input
@@ -96,6 +97,28 @@ def patch_kernel(source: Path, destination: Path, vmlinux: Path | None = None) -
     return messages
 
 
+def patch_r600_payload(
+    source_dir: Path, *, unsquashfs: Path, mksquashfs: Path
+) -> list[str]:
+    """Patch all R600 BL7 main/backup images in an extracted vendor payload."""
+    candidates = sorted(
+        path
+        for path in (source_dir / "firmwares" / "r600").glob("*/*")
+        if path.name in {"rcks_fw.bl7", "rcks_fw.bl7.bkup"} and path.is_file()
+    )
+    if not candidates:
+        raise ValueError("vendor payload contains no R600 BL7 main/backup images")
+    messages: list[str] = []
+    for path in candidates:
+        temporary = path.with_suffix(path.suffix + ".patched")
+        messages.append(f"patching R600 payload {path.relative_to(source_dir)}")
+        messages.extend(
+            patch_r600_image(path, temporary, unsquashfs=unsquashfs, mksquashfs=mksquashfs)
+        )
+        temporary.replace(path)
+    return messages
+
+
 def extract_verified_archive(archive_path: Path, staging: Path, release: ReleaseManifest) -> Path:
     verify_decrypted_archive(archive_path, release)
     staging.mkdir(parents=True, exist_ok=True)
@@ -110,7 +133,14 @@ def extract_verified_archive(archive_path: Path, staging: Path, release: Release
     return staging
 
 
-def write_first_readme(path: Path, release: ReleaseManifest) -> None:
+def write_first_readme(path: Path, release: ReleaseManifest, *, r600_patched: bool) -> None:
+    scope_note = (
+        "The ZD kernel and R600 AP payload compatibility patches were applied."
+        if r600_patched
+        else
+        "The ZD kernel compatibility patches were applied. The R600 AP payload "
+        "was not patched because SquashFS tools were not selected."
+    )
     path.write_text(
         f"""# ZD1200 local bundle — {release.version}.{release.build}\n\n
 This bundle was built locally from an operator-supplied Ruckus download.\n
@@ -118,17 +148,24 @@ No firmware is fetched at runtime. Review `.env.example`, attach only a
 dedicated isolated Ethernet adapter, then run `docker compose build` and
 `docker compose up -d`. See `README.md` and `VALIDATION.md`.\n\n
 ## Important scope note\n\n
-The ZD kernel compatibility patches were applied and verified. The AP
-payload is preserved from the vendor archive but the R600 BL7 repacker
-is not yet implemented; the R600 mesh-repair option is therefore not
-applied by this bundle. Do not claim mesh validation from this bundle
-until the report says the AP payload was transformed and the physical
-mesh test in `VALIDATION.md` passes.\n""",
+{scope_note} Do not claim mesh validation from this bundle until the report
+says the AP payload was transformed and the physical mesh test in
+`VALIDATION.md` passes.\n""",
         encoding="utf-8",
     )
 
 
-def build_bundle(input_path: Path, output_path: Path, *, release: ReleaseManifest, repo_root: Path) -> dict[str, object]:
+def build_bundle(
+    input_path: Path,
+    output_path: Path,
+    *,
+    release: ReleaseManifest,
+    repo_root: Path,
+    unsquashfs: Path | None = None,
+    mksquashfs: Path | None = None,
+) -> dict[str, object]:
+    if (unsquashfs is None) != (mksquashfs is None):
+        raise ValueError("--unsquashfs and --mksquashfs must be supplied together")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="zd1200-bundle-") as temporary:
         temporary_root = Path(temporary)
@@ -154,6 +191,24 @@ def build_bundle(input_path: Path, output_path: Path, *, release: ReleaseManifes
         patch_messages = patch_kernel(
             source_dir / "bzImage", image / "bzImage", image / "vmlinux"
         )
+        if unsquashfs is not None and mksquashfs is not None:
+            r600_messages = patch_r600_payload(
+                source_dir, unsquashfs=unsquashfs, mksquashfs=mksquashfs
+            )
+            r600_status: dict[str, object] = {
+                "status": "patched",
+                "messages": r600_messages,
+            }
+            r600_warnings: list[str] = []
+        else:
+            r600_status = {
+                "status": "not_applied",
+                "reason": "BL7 AP payload repacker not selected; provide both SquashFS tool paths",
+            }
+            r600_warnings = [
+                "R600 AP mesh receive repair is not included in this bundle.",
+                "Run the physical AP validation matrix before describing this release as supported.",
+            ]
         make_payload(source_dir, image / "zd1051-payload.tar.gz")
 
         report: dict[str, object] = {
@@ -169,17 +224,13 @@ def build_bundle(input_path: Path, output_path: Path, *, release: ReleaseManifes
                     "output_sha256": sha256_file(image / "bzImage"),
                     "messages": patch_messages,
                 },
-                "r600_wlan_ko": {
-                    "status": "not_applied",
-                    "reason": "BL7 AP payload repacker is not implemented",
-                },
+                "r600_wlan_ko": r600_status,
             },
-            "warnings": [
-                "R600 AP mesh receive repair is not included in this bundle.",
-                "Run the physical AP validation matrix before describing this release as supported.",
-            ],
+            "warnings": r600_warnings,
         }
-        write_first_readme(bundle / "README-FIRST.md", release)
+        write_first_readme(
+            bundle / "README-FIRST.md", release, r600_patched=unsquashfs is not None
+        )
         (bundle / "build-report.json").write_text(
             json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
@@ -213,12 +264,22 @@ def main() -> None:
     parser.add_argument("output", type=Path, help="generated bundle ZIP")
     parser.add_argument("--release", default="zd1200_10_5_1_0_282")
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parent)
+    parser.add_argument("--unsquashfs", type=Path, help="Ruckus-compatible unsquashfs for R600 payload patching")
+    parser.add_argument("--mksquashfs", type=Path, help="Ruckus-compatible mksquashfs for R600 payload patching")
     args = parser.parse_args()
     if not args.input.is_file():
         parser.error(f"input not found: {args.input}")
-    report = build_bundle(
-        args.input, args.output, release=release_by_id(args.release, RELEASES), repo_root=args.repo_root
-    )
+    try:
+        report = build_bundle(
+            args.input,
+            args.output,
+            release=release_by_id(args.release, RELEASES),
+            repo_root=args.repo_root,
+            unsquashfs=args.unsquashfs,
+            mksquashfs=args.mksquashfs,
+        )
+    except ValueError as error:
+        parser.error(str(error))
     print(json.dumps(report, indent=2, sort_keys=True))
 
 
