@@ -14,6 +14,7 @@ import gzip
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -127,6 +128,7 @@ def patch_r600_payload(
         for path in candidates:
             path.write_bytes(replacement)
             messages.append(f"replaced R600 payload {path.relative_to(source_dir)} from local UI image")
+        messages.extend(update_r600_control_files(source_dir, len(replacement)))
         return messages
     if unsquashfs is None or mksquashfs is None:
         raise ValueError("R600 payload patching requires SquashFS tools or --r600-bl7")
@@ -137,6 +139,26 @@ def patch_r600_payload(
             patch_r600_image(path, temporary, unsquashfs=unsquashfs, mksquashfs=mksquashfs)
         )
         temporary.replace(path)
+    return messages
+
+
+def update_r600_control_files(source_dir: Path, image_size: int) -> list[str]:
+    """Update the byte-count fields used by ZD when serving R600 BL7 images."""
+    controls = sorted((source_dir / "firmwares" / "r600").glob("*/*_cntrl.rcks"))
+    if not controls:
+        raise ValueError("vendor payload contains no R600 control file")
+    messages: list[str] = []
+    for control in controls:
+        contents = control.read_text(encoding="ascii")
+        updated, count = re.subn(r"(?m)^\d+$", str(image_size), contents)
+        if count != 2:
+            raise ValueError(
+                f"expected two R600 image-size fields in {control.relative_to(source_dir)}, found {count}"
+            )
+        control.write_text(updated, encoding="ascii")
+        messages.append(
+            f"updated R600 control sizes in {control.relative_to(source_dir)} to {image_size} bytes"
+        )
     return messages
 
 

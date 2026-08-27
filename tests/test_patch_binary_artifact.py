@@ -10,7 +10,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from binary_patch_catalog import ARTIFACTS, PATCHES, PatchRule, load_catalog
-from build_zd1200_bundle import make_payload, patch_kernel
+from build_zd1200_bundle import make_payload, patch_kernel, update_r600_control_files
 from release_manifest import RELEASES, ReleaseManifest, load_release_manifest
 from ruckus_tac_decrypt import decrypt_bytes, decrypt_file
 from verify_release_archive import sha256_file, verify_decrypted_archive, verify_encrypted_input
@@ -317,6 +317,20 @@ class BundleBuilderTests(unittest.TestCase):
         signed[0x84:0x88] = (1).to_bytes(4, "big")
         with self.assertRaisesRegex(ValueError, "signed ISI/FSI"):
             parse_bl7(bytes(signed))
+
+    def test_r600_control_sizes_follow_overridden_bl7(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            control = root / "firmwares/r600/10.5.1.0.282/r600_1051_cntrl.rcks"
+            control.parent.mkdir(parents=True)
+            control.write_text(
+                "[rcks_fw.bl7.main]\n0.0.0.0\npath/main\n16682072\n\n"
+                "[rcks_fw.bl7.bkup]\n0.0.0.0\npath/bkup\n16682072\n",
+                encoding="ascii",
+            )
+            update_r600_control_files(root, 16666624)
+            self.assertNotIn("16682072", control.read_text(encoding="ascii"))
+            self.assertEqual(control.read_text(encoding="ascii").count("16666624"), 2)
 
 
 class PatchRuleTests(unittest.TestCase):
