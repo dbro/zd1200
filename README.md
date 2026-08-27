@@ -124,7 +124,19 @@ extraction and rebuilding remain a separate packaging step. The unsigned BL7
 container can now be parsed and safely round-tripped with `ruckus_bl7.py`; it
 rejects signed ISI/FSI images rather than silently stripping their signatures.
 SquashFS extraction/rebuild and integration of the module rule are still
-pending:
+available as a standalone operation when the matching GPL tools are installed:
+
+```sh
+python3 patch_r600_bl7.py \
+  /path/to/r600-input.bl7 /path/to/r600-patched.bl7 \
+  --unsquashfs /path/to/ruckus_ap_firmware_mod/bin/unsquashfs \
+  --mksquashfs /path/to/ruckus_ap_firmware_mod/bin/mksquashfs
+```
+
+The command patches exactly one `lib/modules/*/net/wlan.ko`, writes a new
+unsigned image, and leaves the input untouched. It does not process signed
+ISI/FSI images. The standalone command is not yet wired into the generated
+bundle's nested AP payload.
 
 ```sh
 python3 patch_binary_artifact.py \
