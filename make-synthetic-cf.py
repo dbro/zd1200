@@ -2,6 +2,7 @@
 """Build a disposable, partitioned disk around the extracted ZD rootfs."""
 
 from pathlib import Path
+import gzip
 import os
 import struct
 
@@ -20,7 +21,14 @@ p2_start, p2_sectors = 329728, 327680    # 160 MiB
 p3_start, p3_sectors = 657408, 327680    # 160 MiB
 p4_start, p4_sectors = 985088, 3000000   # writable area / remaining CF
 
-if rootfs.stat().st_size > p2_sectors * SECTOR:
+with rootfs.open("rb") as rootfs_stream:
+    rootfs_magic = rootfs_stream.read(3)
+if rootfs_magic == b"\x1f\x8b\x08":
+    rootfs_data = gzip.decompress(rootfs.read_bytes())
+else:
+    rootfs_data = rootfs.read_bytes()
+
+if len(rootfs_data) > p2_sectors * SECTOR:
     raise SystemExit("rootfs does not fit in synthetic root partition")
 
 with disk.open("wb") as handle:
@@ -46,7 +54,7 @@ for index, (boot, part_type, start, count) in enumerate(entries):
 mbr[510:512] = b"\x55\xaa"
 with disk.open("r+b") as handle:
     handle.write(mbr)
-    data = rootfs.read_bytes()
+    data = rootfs_data
     # The physical appliance seeds its writable partition with the same base
     # filesystem tree. ZoneDirector then mounts it at /writable and uses its
     # etc/config, database, certificate, and image directories as defaults.
