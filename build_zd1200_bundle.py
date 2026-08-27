@@ -22,6 +22,7 @@ from pathlib import Path
 
 from patch_binary_artifact import apply_rules, extract_artifact, rebuild_artifact, rules_for_artifact
 from patch_r600_bl7 import patch_image as patch_r600_image
+from ruckus_bl7 import parse_bl7
 from release_manifest import RELEASES, ReleaseManifest, release_by_id
 from ruckus_tac_decrypt import decrypt_file
 from verify_release_archive import verify_decrypted_archive, verify_encrypted_input
@@ -98,17 +99,29 @@ def patch_kernel(source: Path, destination: Path, vmlinux: Path | None = None) -
 
 
 def patch_r600_payload(
-    source_dir: Path, *, unsquashfs: Path, mksquashfs: Path
+    source_dir: Path,
+    *,
+    unsquashfs: Path | None = None,
+    mksquashfs: Path | None = None,
+    override: Path | None = None,
 ) -> list[str]:
     """Patch all R600 BL7 main/backup images in an extracted vendor payload."""
     candidates = sorted(
-        path
-        for path in (source_dir / "firmwares" / "r600").glob("*/*")
-        if path.name in {"rcks_fw.bl7", "rcks_fw.bl7.bkup"} and path.is_file()
+        {path.resolve() for path in (source_dir / "firmwares" / "r600").glob("*/*")
+         if path.name in {"rcks_fw.bl7", "rcks_fw.bl7.bkup"} and path.is_file()}
     )
     if not candidates:
         raise ValueError("vendor payload contains no R600 BL7 main/backup images")
     messages: list[str] = []
+    if override is not None:
+        replacement = override.read_bytes()
+        parse_bl7(replacement)
+        for path in candidates:
+            path.write_bytes(replacement)
+            messages.append(f"replaced R600 payload {path.relative_to(source_dir)} from local UI image")
+        return messages
+    if unsquashfs is None or mksquashfs is None:
+        raise ValueError("R600 payload patching requires SquashFS tools or --r600-bl7")
     for path in candidates:
         temporary = path.with_suffix(path.suffix + ".patched")
         messages.append(f"patching R600 payload {path.relative_to(source_dir)}")
@@ -163,7 +176,10 @@ def build_bundle(
     repo_root: Path,
     unsquashfs: Path | None = None,
     mksquashfs: Path | None = None,
+    r600_bl7: Path | None = None,
 ) -> dict[str, object]:
+    if r600_bl7 is not None and (unsquashfs is not None or mksquashfs is not None):
+        raise ValueError("--r600-bl7 cannot be combined with SquashFS tool paths")
     if (unsquashfs is None) != (mksquashfs is None):
         raise ValueError("--unsquashfs and --mksquashfs must be supplied together")
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -191,9 +207,9 @@ def build_bundle(
         patch_messages = patch_kernel(
             source_dir / "bzImage", image / "bzImage", image / "vmlinux"
         )
-        if unsquashfs is not None and mksquashfs is not None:
+        if r600_bl7 is not None or (unsquashfs is not None and mksquashfs is not None):
             r600_messages = patch_r600_payload(
-                source_dir, unsquashfs=unsquashfs, mksquashfs=mksquashfs
+                source_dir, unsquashfs=unsquashfs, mksquashfs=mksquashfs, override=r600_bl7
             )
             r600_status: dict[str, object] = {
                 "status": "patched",
@@ -224,12 +240,13 @@ def build_bundle(
                     "output_sha256": sha256_file(image / "bzImage"),
                     "messages": patch_messages,
                 },
-                "r600_wlan_ko": r600_status,
+            "r600_wlan_ko": r600_status,
             },
             "warnings": r600_warnings,
         }
         write_first_readme(
-            bundle / "README-FIRST.md", release, r600_patched=unsquashfs is not None
+            bundle / "README-FIRST.md", release,
+            r600_patched=(r600_bl7 is not None or unsquashfs is not None),
         )
         (bundle / "build-report.json").write_text(
             json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
@@ -266,6 +283,7 @@ def main() -> None:
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parent)
     parser.add_argument("--unsquashfs", type=Path, help="Ruckus-compatible unsquashfs for R600 payload patching")
     parser.add_argument("--mksquashfs", type=Path, help="Ruckus-compatible mksquashfs for R600 payload patching")
+    parser.add_argument("--r600-bl7", type=Path, help="local unsigned, model-matching R600 BL7 override")
     args = parser.parse_args()
     if not args.input.is_file():
         parser.error(f"input not found: {args.input}")
@@ -276,7 +294,8 @@ def main() -> None:
             release=release_by_id(args.release, RELEASES),
             repo_root=args.repo_root,
             unsquashfs=args.unsquashfs,
-            mksquashfs=args.mksquashfs,
+        mksquashfs=args.mksquashfs,
+        r600_bl7=args.r600_bl7,
         )
     except ValueError as error:
         parser.error(str(error))
