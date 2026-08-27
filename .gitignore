@@ -30,3 +30,7 @@ __pycache__/
 .env
 *.key
 *.pem
+
+# Operator-provided diagnostic SSH material.  Never ship a reusable key.
+zd-dropbear2222/authorized_keys
+zd-dropbear2222/testkey*

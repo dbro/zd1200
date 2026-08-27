@@ -8,8 +8,8 @@ RUN apt-get update \
         cpio \
         curl \
         e2fsprogs \
-        gdb \
         gzip \
+        iproute2 \
         procps \
         python3 \
         qemu-system-x86 \
@@ -20,13 +20,15 @@ RUN apt-get update \
 
 WORKDIR /opt/zd1200
 COPY boot-initrd-handoff \
+     binary_patch_catalog.json \
+     binary_patch_catalog.py \
      limit-process-cpu.py \
      make-runtime-initrd.sh \
      make-synthetic-cf.py \
+     patch_binary_artifact.py \
      run-zd1200-qemu.sh \
      run-zd1200-web.sh \
      write-boarddata.py \
-     zd1200-patch.gdb \
      /opt/zd1200/
 
 RUN chmod +x /opt/zd1200/boot-initrd-handoff \
@@ -37,12 +39,13 @@ ENV STATE_DIR=/var/lib/zd1200 \
     NETWORK_MODE=tap \
     TAP_IF=tap-zd \
     GUEST_IP=192.168.50.10 \
+    WEB_PROBE=auto \
     MEMORY_MB=2048 \
     WEB_WAIT_SECONDS=600
 
 VOLUME ["/var/lib/zd1200"]
 
 HEALTHCHECK --interval=30s --timeout=8s --start-period=10m --retries=3 \
-    CMD curl -kfsS --max-time 5 https://192.168.50.10/admin10/login.jsp >/dev/null || exit 1
+    CMD pgrep -f '[q]emu-system-i386' >/dev/null || exit 1
 
 CMD ["./run-zd1200-web.sh"]

@@ -14,3 +14,5 @@ analysis-*/
 *.runtime.gz
 *.runtime.gz.sha256
 synthetic-cf.img
+zd-dropbear2222/authorized_keys
+zd-dropbear2222/testkey*

@@ -9,14 +9,15 @@ started_at=$SECONDS
 high_cpu_samples=0
 ready=0
 http_status=""
-gdb_port="${GDB_PORT:-$((21000 + $$ % 1000))}"
 http_port="${HTTP_PORT:-38080}"
 https_port="${HTTPS_PORT-38443}"
 network_mode="${NETWORK_MODE:-user}"
 guest_ip="${GUEST_IP:-192.168.10.20}"
+web_probe="${WEB_PROBE:-auto}"
 state_dir="${STATE_DIR:-$work_dir}"
 synthetic_disk="${SYNTHETIC_DISK:-$state_dir/synthetic-cf.img}"
 persistent_disk="${PERSISTENT_DISK:-$state_dir/zd1200-vm.qcow2}"
+patched_kernel="${PATCHED_KERNEL:-$state_dir/bzImage.patched}"
 vm_snapshot="${VM_SNAPSHOT:-0}"
 cpu_limit="${CPU_LIMIT:-}"
 if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
@@ -53,14 +54,16 @@ if [ ! -f image/bootinitramfs.gz ]; then
 fi
 runtime_initrd="${RUNTIME_INITRD:-$state_dir/bootinitramfs.runtime.gz}"
 RUNTIME_INITRD="$runtime_initrd" "$work_dir/make-runtime-initrd.sh"
-if ! command -v gdb >/dev/null 2>&1; then
-    echo "gdb is required" >&2
-    exit 1
-fi
 if ! command -v qemu-img >/dev/null 2>&1; then
     echo "qemu-img is required" >&2
     exit 1
 fi
+echo "Preparing signature-patched kernel ..."
+python3 "$work_dir/patch_binary_artifact.py" \
+    --artifact zd1200_kernel_elf \
+    --in "$work_dir/image/bzImage" \
+    --out "$patched_kernel" \
+    --vmlinux "$work_dir/image/vmlinux"
 if [ ! -f "$synthetic_disk" ]; then
     echo "Creating persistent synthetic CF base image in $state_dir ..."
     SYNTHETIC_DISK="$synthetic_disk" python3 "$work_dir/make-synthetic-cf.py"
@@ -71,7 +74,7 @@ fi
 python3 "$work_dir/write-boarddata.py" \
     --disk "$synthetic_disk" \
     --serial "${ZD_SERIAL:-123456000789}" \
-    --mac "${ZD_MAC1:-01:01:01:01:01:02}" \
+    --mac "${ZD_MAC1:-02:52:54:12:00:01}" \
     --model "${ZD_MODEL:-ZD1200}" \
     --customer "${ZD_CUSTOMER:-ruckus}"
 if [ ! -f "$persistent_disk" ]; then
@@ -80,25 +83,16 @@ if [ ! -f "$persistent_disk" ]; then
 fi
 
 : > "$log_file"
-setsid env INITRD="$runtime_initrd" \
+setsid env KERNEL="$patched_kernel" INITRD="$runtime_initrd" \
     DISK_IMAGE="$persistent_disk" DISK_FORMAT=qcow2 DISK_CACHE=writeback SNAPSHOT="$vm_snapshot" PACE_GUEST=0 \
     ACCEL="$vm_accel" \
-    GDB_PORT="$gdb_port" \
     HTTP_PORT="$http_port" \
     HTTPS_PORT="$https_port" \
     NETWORK_MODE="$network_mode" \
     TAP_IF="${TAP_IF:-tap-zd}" \
-    DEBUG=1 nice -n 10 ./run-zd1200-qemu.sh \
+    nice -n 10 ./run-zd1200-qemu.sh \
     >>"$log_file" 2>&1 </dev/null &
 qemu_pid=$!
-
-sleep 3
-
-timeout "${GDB_TIMEOUT:-30}s" gdb -q -batch image/vmlinux \
-    -ex 'set architecture i386' \
-    -ex "target remote :$gdb_port" \
-    -x zd1200-patch.gdb \
-    >/tmp/zd1200-web-gdb.log 2>&1 || true
 
 # CPU_LIMIT is opt-in for KVM. TCG retains its historical 60% safety cap.
 if [ -z "$cpu_limit" ] && [ "$vm_accel" = tcg ]; then
@@ -114,15 +108,36 @@ if [ -n "$cpu_limit" ]; then
     echo "QEMU CPU duty cycle capped at ${cpu_limit}% while the VM runs."
 fi
 
-echo "ZD1200 is starting; waiting for the web service..."
+case "$web_probe" in
+    auto)
+        if [ "$network_mode" = tap ]; then
+            web_probe=off
+        else
+            web_probe=on
+        fi
+        ;;
+    on|off) ;;
+    *)
+        echo "WEB_PROBE must be auto, on, or off." >&2
+        exit 2
+        ;;
+esac
+
 wait_seconds="${WEB_WAIT_SECONDS:-${WEB_WAIT_LOOPS:-180}}"
 if ! [[ "$wait_seconds" =~ ^[0-9]+$ ]] || (( wait_seconds < 1 )); then
     echo "WEB_WAIT_SECONDS must be a positive integer." >&2
     exit 2
 fi
-if [ -n "$cpu_limit" ]; then
+if [ "$web_probe" = off ]; then
+    echo "ZD1200 is starting with external web readiness checks."
+    echo "Guest management address: https://$guest_ip/"
+    echo "The TAP bridge is intentionally unnumbered on the Docker host."
+    ready=1
+elif [ -n "$cpu_limit" ]; then
+    echo "ZD1200 is starting; waiting for the web service..."
     echo "Startup is CPU-limited and has a ${wait_seconds}s readiness deadline."
 else
+    echo "ZD1200 is starting; waiting for the web service..."
     echo "Startup runs at full speed and has a ${wait_seconds}s readiness deadline."
 fi
 if [ "$network_mode" = tap ]; then
@@ -132,7 +147,7 @@ else
 fi
 deadline=$((SECONDS + wait_seconds))
 next_notice=$((SECONDS + 30))
-while (( SECONDS < deadline )); do
+while (( ready == 0 && SECONDS < deadline )); do
     http_status="$(curl -ksS --max-time 3 -o /tmp/zd1200-login.html \
         -w '%{http_code}' \
         "$probe_base/admin10/login.jsp" \

@@ -21,7 +21,7 @@ sources=(
 if [ -f "$payload" ]; then
     sources+=("$payload")
 fi
-if [ -d "$work_dir/zd-dropbear2222" ]; then
+if [ -r "$work_dir/zd-dropbear2222/authorized_keys" ]; then
     sources+=("$work_dir"/zd-dropbear2222/*)
 fi
 
@@ -49,7 +49,7 @@ if [ -f "$payload" ]; then
     # an otherwise successful extraction into a fatal error.
     tar --no-same-owner -xzf "$payload" -C "$staging/zd1051-payload"
 fi
-if [ -d "$work_dir/zd-dropbear2222" ]; then
+if [ -r "$work_dir/zd-dropbear2222/authorized_keys" ]; then
     mkdir -p "$staging/zd-dropbear2222"
     cp -a "$work_dir/zd-dropbear2222/." "$staging/zd-dropbear2222/"
     chmod 755 "$staging/zd-dropbear2222/dropbear" \

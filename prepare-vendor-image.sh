@@ -5,7 +5,7 @@ set -euo pipefail
 
 work_dir="$(cd "$(dirname "$0")" && pwd)"
 archive_path="${1:-}"
-expected_sha256="${EXPECTED_ARCHIVE_SHA256:-64dfbf4d67cc65cafa0e258e426c664c7387b1219209ec893b9b1e41ab202cb8}"
+release_id="${RELEASE_ID:-zd1200_10_5_1_0_282}"
 
 fail() {
     echo "prepare-vendor-image: $*" >&2
@@ -18,17 +18,30 @@ for command in tar gzip python3 md5sum sha256sum; do
     command -v "$command" >/dev/null || fail "$command is required"
 done
 
-actual_sha256="$(sha256sum "$archive_path" | awk '{print $1}')"
-[ "$actual_sha256" = "$expected_sha256" ] || fail "unexpected archive SHA-256: $actual_sha256"
-
-# Refuse paths that would escape the temporary extraction directory.
-if tar -tzf "$archive_path" | awk '/^\// || /(^|\/)\.\.($|\/)/ { bad = 1 } END { exit bad ? 0 : 1 }'; then
-    fail "archive contains an unsafe path"
-fi
+# This launcher currently knows how to construct the 10.5.1 runtime payload.
+# The release manifest/verifier supplies the exact archive identity and safe
+# TAR preflight; do not weaken that check with an environment hash override.
+[ "$release_id" = "zd1200_10_5_1_0_282" ] || fail "unsupported release_id: $release_id"
 
 staging="$(mktemp -d "${TMPDIR:-/tmp}/zd1051-vendor.XXXXXX")"
 trap 'rm -rf "$staging"' EXIT
-tar -xzf "$archive_path" -C "$staging"
+if gzip -t "$archive_path" 2>/dev/null; then
+    decrypted_archive="$archive_path"
+    echo "Input is a gzip-compressed TAR; verifying decrypted archive."
+else
+    echo "Input is opaque; verifying exact encrypted archive and decrypting locally."
+    python3 "$work_dir/verify_release_archive.py" --release "$release_id" --encrypted "$archive_path"
+    decrypted_archive="$staging/decrypted.img.tgz"
+    python3 "$work_dir/ruckus_tac_decrypt.py" "$archive_path" "$decrypted_archive"
+fi
+python3 "$work_dir/verify_release_archive.py" --release "$release_id" "$decrypted_archive"
+
+# Refuse paths that would escape the temporary extraction directory.
+if tar -tzf "$decrypted_archive" | awk '/^\// || /(^|\/)\.\.($|\/)/ { bad = 1 } END { exit bad ? 0 : 1 }'; then
+    fail "archive contains an unsafe path"
+fi
+
+tar -xzf "$decrypted_archive" -C "$staging"
 metadata="$(find "$staging" -type f -name metadata -print -quit)"
 [ -n "$metadata" ] || fail "vendor metadata file not found"
 source_dir="$(dirname "$metadata")"

@@ -12,8 +12,12 @@ fail() { echo "zd1200-bridge: $*" >&2; exit 1; }
 
 disable_ip() {
     local interface="$1"
-    [ ! -e "/proc/sys/net/ipv6/conf/$interface/disable_ipv6" ] ||
-        printf '1\n' > "/proc/sys/net/ipv6/conf/$interface/disable_ipv6"
+    local disable_ipv6="/proc/sys/net/ipv6/conf/$interface/disable_ipv6"
+    if [ -w "$disable_ipv6" ]; then
+        printf '1\n' > "$disable_ipv6"
+    elif [ -e "$disable_ipv6" ]; then
+        echo "zd1200-bridge: cannot disable IPv6 on $interface; continuing with addresses flushed" >&2
+    fi
     ip address flush dev "$interface" || true
 }
 

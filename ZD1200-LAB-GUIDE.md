@@ -1,4 +1,4 @@
-# ZD1200 Lab Guide — patched kernel + custom dropbear-2222
+# ZD1200 Lab Guide — patched kernel + optional diagnostic Dropbear
 
 This guide covers the QEMU lab for the Ruckus ZoneDirector 1200 (10.5.1.0.282)
 that was brought up in this directory, and specifically how to run **your own
@@ -18,7 +18,7 @@ time.  Read it before changing anything.
 |---|---|
 | `patch-kernel.py` | applies the six `zd1200-patch.gdb` byte patches to the kernel and splices it back into a bootable `bzImage` (TCG-compatible replacement for the KVM-only gdb flow) |
 | `run-zd1200-lab.sh` | one-shot launcher: validates/builds `image/`, patched kernel, runtime initramfs, VM disk; then execs QEMU |
-| `zd-dropbear2222/` | deployment payload: `dropbear`, `dropbearkey`, `dropbearconvert`, `sftp-server` (from `../src/out/`) + `authorized_keys` |
+| `zd-dropbear2222/` | optional local deployment payload: `dropbear`, `dropbearkey`, `dropbearconvert`, `sftp-server` (from `../src/out/`) plus an operator-supplied, Git-ignored `authorized_keys` |
 | `make-runtime-initrd.sh` *(modified)* | now bundles `zd-dropbear2222/` into the runtime initramfs at `/zd-dropbear2222` |
 | `boot-initrd-handoff` *(modified)* | copies the payload into the data partition each boot, writes a real `/etc/passwd` + `/etc/shells`, installs `S99zd_dropbear2222` which generates host keys and starts dropbear on 2222 |
 | `run-zd1200-qemu.sh` *(modified)* | added `KERNEL=` override and `EXTRA_HOSTFWD=` (used for `tcp:127.0.0.1:2222-:2222`) |
@@ -29,7 +29,7 @@ to `127.0.0.1` — a loopback-only adapter.  No Docker is required.
 ## 2. Prerequisites
 
 - x86_64 (or aarch64 — see hints) Linux host, `qemu-system-i386` + `qemu-img`
-  (Debian/Ubuntu: `apt install qemu-system-x86 gdb`), `python3`, `curl`,
+  (Debian/Ubuntu: `apt install qemu-system-x86`), `python3`, `curl`,
   `ssh` client, ~6 GB free disk.
 - `/dev/kvm` **optional**: with KVM the stock repo flow works as-is
   (its gdb patch uses `hbreak`).  Without KVM (TCG) you need
@@ -81,6 +81,18 @@ Optional flags: `--reset-disk` (factory reset), `--rebuild-kernel`,
 QEMU; the guest console is attached (Ctrl-A X to quit QEMU).
 
 Under TCG expect **~2–4 minutes** from launch to the login page / dropbear.
+
+Diagnostic root SSH is disabled unless this local (untracked) file exists:
+
+```sh
+mkdir -p zd-dropbear2222
+ssh-keygen -t ed25519 -N '' -f ~/.ssh/zd1200-diagnostic
+cp ~/.ssh/zd1200-diagnostic.pub zd-dropbear2222/authorized_keys
+chmod 600 zd-dropbear2222/authorized_keys
+```
+
+The public key is not shipped by this project. Remove that file and restart
+the VM to disable the diagnostic listener again.
 
 ## 6. Verify
 
@@ -196,10 +208,10 @@ does not come up.
 7. **`dropbear -v` does not exist in this build** (DEBUG_TRACE off) —
    `Invalid option -v` kills the server.  Use `-E` to log to stderr/console.
 
-8. **The test key.**  Generate one with
-   `ssh-keygen -t ed25519 -N '' -f <path>` and put the `.pub` line into
-   `zd-dropbear2222/authorized_keys`; the handoff refreshes it every boot
-   (initramfs rebuild is automatic).  First connect: add
+8. **Use an operator-owned key.** Generate one with
+   `ssh-keygen -t ed25519 -N '' -f <path>` and put the `.pub` line into the
+   Git-ignored `zd-dropbear2222/authorized_keys`; the handoff refreshes it
+   every boot (initramfs rebuild is automatic). First connect: add
    `-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null` or accept
    the host key (fingerprint is printed on the console at key generation).
 
@@ -238,4 +250,3 @@ does not come up.
 | `Invalid option -v` | DEBUG_TRACE not compiled — use `-E` |
 | port 2222 open but no SSH banner | dropbear died at start — check the S99 console output |
 | nothing on 2222 at all | handoff copy failed — check S99 `ls` output on the console |
-

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ZD1200 exact release manifest",
+  "type": "object",
+  "required": ["manifest_version", "releases"],
+  "additionalProperties": false,
+  "properties": {
+    "manifest_version": { "const": 1 },
+    "releases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "release_id", "product", "version", "build", "support_status",
+          "archive_format", "metadata", "required_paths", "artifact_ids", "features"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "release_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "product": { "const": "zd1200" },
+          "version": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+){3}$" },
+          "build": { "type": "integer", "minimum": 0 },
+          "support_status": { "enum": ["known", "experimental", "awaiting_fixture"] },
+          "encrypted_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "decrypted_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "archive_format": { "enum": ["gzip_tar"] },
+          "metadata": { "type": "object", "additionalProperties": { "type": "string" } },
+          "required_paths": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "artifact_ids": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" } },
+          "features": { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

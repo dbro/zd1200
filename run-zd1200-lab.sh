@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Launch the virtual Ruckus ZoneDirector 1200 lab (patched kernel, loopback
-# networking, custom dropbear on guest port 2222).
+# Launch the virtual Ruckus ZoneDirector 1200 lab (patched kernel and
+# loopback networking). Diagnostic Dropbear on guest port 2222 is opt-in.
 #
 # Builds/checks every prerequisite on the way and then execs
 # run-zd1200-qemu.sh with the lab settings.  See ZD1200-LAB-GUIDE.md.
@@ -39,7 +39,13 @@ echo "== prerequisites =="
 [ -f image/bzImage ]        || { echo "missing image/bzImage - run prepare-vendor-image.sh first" >&2; exit 1; }
 [ -f image/vmlinux ]        || { echo "missing image/vmlinux - run prepare-vendor-image.sh first" >&2; exit 1; }
 [ -f image/restoreinitramfs.gz ] || { echo "missing image/restoreinitramfs.gz - run prepare-vendor-image.sh first" >&2; exit 1; }
-[ -d zd-dropbear2222 ]      || { echo "missing zd-dropbear2222/ payload dir" >&2; exit 1; }
+diagnostic_ssh=0
+if [ -r zd-dropbear2222/authorized_keys ]; then
+    diagnostic_ssh=1
+    echo "diagnostic SSH: enabled with local authorized_keys"
+else
+    echo "diagnostic SSH: disabled (no local zd-dropbear2222/authorized_keys)"
+fi
 
 # The vendor rootfs file in image/ is gzip-compressed; the synthetic disk and
 # the controller need a RAW ext2 filesystem (superblock magic 0xEF53 at byte
@@ -72,7 +78,7 @@ else
     echo "image/bzImage.patched present (--rebuild-kernel to rebuild)"
 fi
 
-echo "== runtime initramfs (kernel + dropbear2222 payload) =="
+echo "== runtime initramfs =="
 RUNTIME_INITRD="$work_dir/bootinitramfs.runtime.gz" ./make-runtime-initrd.sh
 
 echo "== VM disk =="
@@ -89,7 +95,7 @@ fi
 python3 write-boarddata.py \
     --disk synthetic-cf.img \
     --serial "${ZD_SERIAL:-123456000789}" \
-    --mac "${ZD_MAC1:-01:01:01:01:01:02}" \
+    --mac "${ZD_MAC1:-02:52:54:12:00:01}" \
     --model "${ZD_MODEL:-ZD1200}" \
     --customer "${ZD_CUSTOMER:-ruckus}"
 if [ ! -f zd1200-vm.qcow2 ]; then
@@ -101,7 +107,14 @@ echo "== launching QEMU =="
 echo "  accelerator : ${ACCEL:-tcg}"
 echo "  console     : attached here (Ctrl-A X to quit QEMU)"
 echo "  web         : http://127.0.0.1:38080/  https://127.0.0.1:38443/admin10/login.jsp"
-echo "  ssh (lab)   : ssh -i <key> -p 2222 root@127.0.0.1   (pubkey-only, dropbear 2026.94)"
+if [ "$diagnostic_ssh" = 1 ]; then
+    echo "  ssh (lab)   : ssh -i <key> -p 2222 root@127.0.0.1   (pubkey-only, diagnostic)"
+fi
+
+extra_hostfwd=""
+if [ "$diagnostic_ssh" = 1 ]; then
+    extra_hostfwd="tcp:127.0.0.1:2222-:2222"
+fi
 
 exec env \
     KERNEL=image/bzImage.patched \
@@ -109,7 +122,7 @@ exec env \
     DISK_IMAGE="$work_dir/zd1200-vm.qcow2" \
     DISK_FORMAT=qcow2 DISK_CACHE=writeback SNAPSHOT=0 \
     NETWORK_MODE=user \
-    EXTRA_HOSTFWD="tcp:127.0.0.1:2222-:2222" \
+    EXTRA_HOSTFWD="$extra_hostfwd" \
     ACCEL="${ACCEL:-tcg}" PACE_GUEST=0 \
     HTTP_PORT=38080 HTTPS_PORT=38443 \
     KERNEL_EXTRA="nohz=off" \

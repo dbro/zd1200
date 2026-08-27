@@ -1,0 +1,71 @@
+{
+  "manifest_version": 1,
+  "releases": [
+    {
+      "release_id": "zd1200_10_2_1_0_232",
+      "product": "zd1200",
+      "version": "10.2.1.0",
+      "build": 232,
+      "support_status": "experimental",
+      "encrypted_sha256": "110703c3c4492db0b31be0c265fffed9e468fa2b9bd733a518d09577f31eba67",
+      "decrypted_sha256": "89b7857dcc1817758ef766f0becb81e8f57c477acf71f95a5a18f6abb918171a",
+      "archive_format": "gzip_tar",
+      "metadata": {
+        "VERSION": "10.2.1.0",
+        "BUILD": "232",
+        "REQUIRE_PLATFORM": "nar5520",
+        "REQUIRE_SUBPLATFORM": "cob7402",
+        "KERNEL_MD5SUM": "18053863c289e052d657db665b5dee38",
+        "ROOTFS_MD5SUM": "2b61dd1d32990463ea61219f080fe6d8"
+      },
+      "required_paths": [
+        "bzImage",
+        "restoreinitramfs.gz",
+        "rootfs.i386.ext2.director1200.img",
+        "metadata",
+        "aidfs/file_list.txt",
+        "file_list.txt",
+        "ap-models",
+        "firmwares/"
+      ],
+      "artifact_ids": ["zd1200_kernel_elf"],
+      "features": {
+        "ftp_ap_delivery": "expected_unverified",
+        "r600_mesh_receive_repair": "not_yet_assessed"
+      }
+    },
+    {
+      "release_id": "zd1200_10_5_1_0_282",
+      "product": "zd1200",
+      "version": "10.5.1.0",
+      "build": 282,
+      "support_status": "known",
+      "encrypted_sha256": "d18591e40c535f3ac0f3a6c767708c0f40ae4e347fc2fdfb51e28fba11b26c90",
+      "decrypted_sha256": "64dfbf4d67cc65cafa0e258e426c664c7387b1219209ec893b9b1e41ab202cb8",
+      "archive_format": "gzip_tar",
+      "metadata": {
+        "VERSION": "10.5.1.0",
+        "BUILD": "282",
+        "REQUIRE_PLATFORM": "nar5520",
+        "REQUIRE_SUBPLATFORM": "cob7402",
+        "KERNEL_MD5SUM": "465cf7435e7f1928fb8aa2c448092b80",
+        "ROOTFS_MD5SUM": "c74f36f652ef8914789fee1284697cbb"
+      },
+      "required_paths": [
+        "bzImage",
+        "restoreinitramfs.gz",
+        "rootfs.i386.ext2.director1200.img",
+        "metadata",
+        "aidfs/file_list.txt",
+        "file_list.txt",
+        "ap-models",
+        "firmwares/"
+      ],
+      "artifact_ids": ["zd1200_kernel_elf"],
+      "features": {
+        "ftp_ap_delivery": "unverified",
+        "r600_mesh_receive_repair": "available_when_ap_payload_is_repacked"
+      }
+    }
+  ]
+}

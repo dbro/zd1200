@@ -21,9 +21,11 @@ services:
       NETWORK_MODE: tap
       TAP_IF: ${ZD_TAP_IF:-tap-zd}
       GUEST_IP: ${ZD_GUEST_IP:-192.168.50.10}
+      # The host bridge has no IP, so readiness is checked from the LAN.
+      WEB_PROBE: ${ZD_WEB_PROBE:-off}
       # Board data written into the CF image: serial + base MAC (MAC2=MAC1+1).
       ZD_SERIAL: ${ZD_SERIAL:-123456000789}
-      ZD_MAC1: ${ZD_MAC1:-01:01:01:01:01:02}
+      ZD_MAC1: ${ZD_MAC1:-02:52:54:12:00:01}
       # Work around the 2.6.32 tickless-idle spin demonstrated in cpu-study.
       KERNEL_EXTRA: nohz=off
       WEB_WAIT_SECONDS: "600"
@@ -40,7 +42,7 @@ services:
     stop_grace_period: 20s
 
     healthcheck:
-      test: ["CMD-SHELL", "curl -kfsS --max-time 5 https://${ZD_GUEST_IP:-192.168.50.10}/admin10/login.jsp >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "pgrep -f '[q]emu-system-i386' >/dev/null"]
       interval: 30s
       timeout: 8s
       start_period: 10m
@@ -48,3 +50,4 @@ services:
 
 volumes:
   zd1200-state:
+    name: ${ZD_STATE_VOLUME:-zd1200-state}
