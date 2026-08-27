@@ -1,4 +1,4 @@
-# Virtual ZoneDirector 1200 — 10.5.1.0.282 proof of concept
+# Virtual ZoneDirector 1200 lab port
 
 This project boots the x86 ZoneDirector 1200 software in QEMU/KVM and exposes
 it through a TAP-backed Ethernet interface. It is an experimental, unsupported
@@ -14,22 +14,28 @@ The physical-AP acceptance and regression procedure is in
 ## Firmware and licensing boundary
 
 This repository intentionally contains **no Ruckus binaries, firmware, root
-filesystems, keys, or AP images**. Obtain the matching ZD1200 10.5.1.0.282
-package yourself from [Ruckus Support](https://support.ruckuswireless.com/software/4537-zd1200-10-5-1-ga-refresh-9-software-release), and ensure that your download, decryption and use comply with the applicable terms.
+filesystems, keys, or AP images**. Obtain a matching ZD1200 package yourself
+from Ruckus Support and ensure that your download, decryption and use comply
+with the applicable terms. Exact builds are recognized only by their manifest
+hash and metadata, never by a filename alone.
+
+| Exact build | Status | Bench evidence |
+| --- | --- | --- |
+| 10.5.1.0.282 | known | controller, R600 adoption, HTTPS and legacy FTP delivery validated |
+| 10.3.1.0.42 | experimental | fresh controller boot and factory HTTPS validated; this is not the final 10.3.1 refresh |
+| 10.2.1.0.232 | experimental | fresh controller boot and factory HTTPS validated |
+| 10.1.2.0.318 | experimental | fresh controller boot and factory HTTPS validated; AP delivery remains untested |
 
 The included [MIT License](LICENSE) applies only to this repository's original
 glue code and documentation. It grants no rights to Ruckus materials.
 
 `prepare-vendor-image.sh` accepts either the original opaque encrypted download
 or its already-decrypted gzip-TAR form and creates the ignored `image/`
-directory locally. Legacy TAC decryption is performed locally with an adapted,
-attributed [aioruckus](https://github.com/ms264556/aioruckus) BSD-0-Clause
-implementation; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). It
-expects this exact decrypted archive SHA-256:
-
-```
-64dfbf4d67cc65cafa0e258e426c664c7387b1219209ec893b9b1e41ab202cb8
-```
+directory locally. Select an older exact build with `RELEASE_ID`; otherwise it
+uses the known 10.5.1.0.282 manifest. Legacy TAC decryption is performed
+locally with an adapted, attributed
+[aioruckus](https://github.com/ms264556/aioruckus) BSD-0-Clause
+implementation; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 The script verifies the encrypted input hash when applicable, then verifies the
 decrypted archive identity, safe TAR layout/links, vendor metadata, and vendor
@@ -51,6 +57,13 @@ ignored by Git and must never be committed.
 cp .env.example .env
 ./prepare-vendor-image.sh /absolute/path/to/zd1200_10.5.1.0.282.ap_10.5.1.0.282.img.tgz
 docker compose up -d --build
+```
+
+For an older experimental build:
+
+```sh
+RELEASE_ID=zd1200_10_2_1_0_232 ./prepare-vendor-image.sh \
+  /absolute/path/to/zd1200_10.2.1.0.232.ap_10.2.1.0.232.img
 ```
 
 `run-zd1200-lab.sh` invokes the generalized binary patcher when it builds
@@ -87,12 +100,21 @@ python3 verify_release_archive.py /path/to/zd1200_10.5.1.0.282.ap_10.5.1.0.282.i
 It verifies the exact archive SHA-256, TAR path/link safety, required layout,
 and expected vendor metadata without extracting or modifying the archive.
 
-For the current 10.5.1 release, the deterministic local bundle builder is:
+For any recognized release, the deterministic local bundle builder is:
 
 ```sh
 python3 build_zd1200_bundle.py \
   /path/to/zd1200_10.5.1.0.282.ap_10.5.1.0.282.img \
   /path/to/zd1200-10.5.1.0.282-bundle.zip
+```
+
+Pass the exact manifest ID for an older build, for example:
+
+```sh
+python3 build_zd1200_bundle.py \
+  /path/to/zd1200_10.2.1.0.232.ap_10.2.1.0.232.img \
+  /path/to/zd1200-10.2.1.0.232-bundle.zip \
+  --release zd1200_10_2_1_0_232
 ```
 
 The ZIP contains the locally transformed controller image, Docker/runtime

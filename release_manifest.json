@@ -2,6 +2,39 @@
   "manifest_version": 1,
   "releases": [
     {
+      "release_id": "zd1200_10_1_2_0_318",
+      "product": "zd1200",
+      "version": "10.1.2.0",
+      "build": 318,
+      "support_status": "experimental",
+      "encrypted_sha256": "0e06015d85a004c42a512dee2a3be0aee9a3851999ff7221d9fda6626e592069",
+      "decrypted_sha256": "5e7ddfbf8fa1e893bbe0a4de9c536677daf4c58e02dad58cce704fa99872772f",
+      "archive_format": "gzip_tar",
+      "metadata": {
+        "VERSION": "10.1.2.0",
+        "BUILD": "318",
+        "REQUIRE_PLATFORM": "nar5520",
+        "REQUIRE_SUBPLATFORM": "cob7402",
+        "KERNEL_MD5SUM": "9ade5b109e95f5a9fb6099ea559849e6",
+        "ROOTFS_MD5SUM": "db6225934eaaab6b9a1caee03badafdd"
+      },
+      "required_paths": [
+        "bzImage",
+        "restoreinitramfs.gz",
+        "rootfs.i386.ext2.director1200.img",
+        "metadata",
+        "file_list.txt",
+        "ap-models",
+        "firmwares/"
+      ],
+      "artifact_ids": ["zd1200_kernel_elf"],
+      "features": {
+        "archive_aidfs_layout": "rootfs_only",
+        "ftp_ap_delivery": "expected_unverified",
+        "r600_mesh_receive_repair": "not_yet_assessed"
+      }
+    },
+    {
       "release_id": "zd1200_10_2_1_0_232",
       "product": "zd1200",
       "version": "10.2.1.0",
@@ -32,6 +65,40 @@
       "features": {
         "ftp_ap_delivery": "expected_unverified",
         "r600_mesh_receive_repair": "not_yet_assessed"
+      }
+    },
+    {
+      "release_id": "zd1200_10_3_1_0_42",
+      "product": "zd1200",
+      "version": "10.3.1.0",
+      "build": 42,
+      "support_status": "experimental",
+      "encrypted_sha256": "55605ad5baefd237bc7a7018fc01991e60c7390cc20e46959976556e2511a8e1",
+      "decrypted_sha256": "8567fd6f7802ee58785054e306e753089933b18e6131bda9e0a7832f9c726d60",
+      "archive_format": "gzip_tar",
+      "metadata": {
+        "VERSION": "10.3.1.0",
+        "BUILD": "42",
+        "REQUIRE_PLATFORM": "nar5520",
+        "REQUIRE_SUBPLATFORM": "cob7402",
+        "KERNEL_MD5SUM": "2f04847536141910b91cdfc1268e77be",
+        "ROOTFS_MD5SUM": "e481eec1c139f41f6819d53ded5c9c6c"
+      },
+      "required_paths": [
+        "bzImage",
+        "restoreinitramfs.gz",
+        "rootfs.i386.ext2.director1200.img",
+        "metadata",
+        "aidfs/file_list.txt",
+        "file_list.txt",
+        "ap-models",
+        "firmwares/"
+      ],
+      "artifact_ids": ["zd1200_kernel_elf"],
+      "features": {
+        "ftp_ap_delivery": "expected_unverified",
+        "r600_mesh_receive_repair": "not_yet_assessed",
+        "fixture_note": "10_3_1_0_42_is_not_the_final_10_3_1_refresh"
       }
     },
     {

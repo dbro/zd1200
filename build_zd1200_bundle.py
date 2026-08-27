@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
+import io
 import json
 import os
 import re
@@ -62,12 +63,31 @@ def _tar_filter(info: tarfile.TarInfo) -> tarfile.TarInfo:
     return info
 
 
-def make_payload(source_dir: Path, destination: Path) -> None:
-    """Create a reproducible payload TAR while preserving vendor symlinks."""
+def make_payload(source_dir: Path, destination: Path, release: ReleaseManifest) -> None:
+    """Create a reproducible release payload TAR preserving vendor symlinks.
+
+    10.1.2 stores its web assets in the root filesystem rather than a separate
+    ``aidfs`` directory.  The small release-info member lets the boot handoff
+    distinguish that deliberate layout difference from a truncated payload.
+    """
+    names = ["firmwares", "ap-models", "file_list.txt"]
+    if (source_dir / "aidfs").is_dir():
+        names.append("aidfs")
+    release_info = (
+        f"RELEASE_ID={release.release_id}\n"
+        f"VERSION={release.version}\n"
+        f"BUILD={release.build}\n"
+        f"HAS_AIDFS={1 if 'aidfs' in names else 0}\n"
+    ).encode("ascii")
     with destination.open("wb") as raw, gzip.GzipFile(
         filename="", fileobj=raw, mode="wb", compresslevel=9, mtime=0
     ) as compressed, tarfile.open(fileobj=compressed, mode="w") as archive:
-        for name in ("firmwares", "aidfs", "ap-models", "file_list.txt"):
+        info = tarfile.TarInfo("release-info")
+        info.size = len(release_info)
+        info.mode = 0o644
+        info.mtime = 0
+        archive.addfile(info, io.BytesIO(release_info))
+        for name in names:
             archive.add(source_dir / name, arcname=name, recursive=True, filter=_tar_filter)
 
 
@@ -295,7 +315,7 @@ def build_bundle(
                 "ap-11n-scorpion AP mesh receive repair is not included in this bundle.",
                 "Run the physical AP validation matrix before describing this release as supported.",
             ]
-        make_payload(source_dir, image / "zd1051-payload.tar.gz")
+        make_payload(source_dir, image / "zd-payload.tar.gz", release)
 
         report: dict[str, object] = {
             "manifest_version": 1,

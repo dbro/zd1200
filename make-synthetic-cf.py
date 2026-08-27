@@ -14,13 +14,6 @@ disk.parent.mkdir(parents=True, exist_ok=True)
 SECTOR = 512
 DISK_SIZE = 2 * 1024 * 1024 * 1024
 
-# Conservative CF-like layout: three ext2-sized areas. The first area is the
-# boarddata/himem partition that the kernel opens through the ext2 layer.
-p1_start, p1_sectors = 2048, 327680      # 160 MiB
-p2_start, p2_sectors = 329728, 327680    # 160 MiB
-p3_start, p3_sectors = 657408, 327680    # 160 MiB
-p4_start, p4_sectors = 985088, 3000000   # writable area / remaining CF
-
 with rootfs.open("rb") as rootfs_stream:
     rootfs_magic = rootfs_stream.read(3)
 if rootfs_magic == b"\x1f\x8b\x08":
@@ -28,8 +21,20 @@ if rootfs_magic == b"\x1f\x8b\x08":
 else:
     rootfs_data = rootfs.read_bytes()
 
-if len(rootfs_data) > p2_sectors * SECTOR:
-    raise SystemExit("rootfs does not fit in synthetic root partition")
+# Conservative CF-like layout: p1 and p3 remain 160 MiB platform areas.  The
+# rootfs (p2) is rounded up to a 16-MiB boundary because 10.1.2's 174-MiB
+# rootfs is larger than the 160-MiB partition used by newer releases.  p4 gets
+# the balance, including the fixed board-data sector near the end of the disk.
+ALIGN_SECTORS = (16 * 1024 * 1024) // SECTOR
+p1_start, p1_sectors = 2048, 327680
+p2_start = p1_start + p1_sectors
+rootfs_sectors = (len(rootfs_data) + SECTOR - 1) // SECTOR
+p2_sectors = ((rootfs_sectors + ALIGN_SECTORS - 1) // ALIGN_SECTORS) * ALIGN_SECTORS
+p3_start, p3_sectors = p2_start + p2_sectors, 327680
+p4_start = p3_start + p3_sectors
+p4_sectors = DISK_SIZE // SECTOR - p4_start
+if p4_sectors <= 0:
+    raise SystemExit("rootfs leaves no writable synthetic CF partition")
 
 with disk.open("wb") as handle:
     handle.truncate(DISK_SIZE)

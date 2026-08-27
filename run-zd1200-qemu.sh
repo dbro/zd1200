@@ -111,7 +111,7 @@ esac
 echo "QEMU accelerator: ${accel_args[1]}" >&2
 
 exec qemu-system-i386 \
-    -name zd1200-10.5.1-lab \
+    -name zd1200-lab \
     "${accel_args[@]}" \
     -machine pc \
     -cpu "${CPU_MODEL:-pentium3}" \

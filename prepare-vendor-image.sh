@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build the locally ignored runtime image/ directory from a user-supplied,
-# decrypted ZD1200 10.5.1.0.282 archive. No vendor material is redistributed.
+# ZD1200 archive selected by an exact release manifest. No vendor material is
+# redistributed.
 set -euo pipefail
 
 work_dir="$(cd "$(dirname "$0")" && pwd)"
@@ -12,18 +13,13 @@ fail() {
     exit 1
 }
 
-[ -n "$archive_path" ] || fail "usage: $0 /path/to/zd1200_10.5.1.0.282.ap_10.5.1.0.282.img.tgz"
+[ -n "$archive_path" ] || fail "usage: RELEASE_ID=zd1200_10_2_1_0_232 $0 /path/to/zd1200.img"
 [ -f "$archive_path" ] || fail "archive not found: $archive_path"
 for command in tar gzip python3 md5sum sha256sum; do
     command -v "$command" >/dev/null || fail "$command is required"
 done
 
-# This launcher currently knows how to construct the 10.5.1 runtime payload.
-# The release manifest/verifier supplies the exact archive identity and safe
-# TAR preflight; do not weaken that check with an environment hash override.
-[ "$release_id" = "zd1200_10_5_1_0_282" ] || fail "unsupported release_id: $release_id"
-
-staging="$(mktemp -d "${TMPDIR:-/tmp}/zd1051-vendor.XXXXXX")"
+staging="$(mktemp -d "${TMPDIR:-/tmp}/zd-vendor.XXXXXX")"
 trap 'rm -rf "$staging"' EXIT
 if gzip -t "$archive_path" 2>/dev/null; then
     decrypted_archive="$archive_path"
@@ -49,23 +45,10 @@ source_dir="$(dirname "$metadata")"
 require_file() {
     [ -f "$source_dir/$1" ] || fail "vendor archive lacks $1"
 }
-for required in bzImage restoreinitramfs.gz rootfs.i386.ext2.director1200.img metadata aidfs/file_list.txt file_list.txt ap-models; do
+for required in bzImage restoreinitramfs.gz rootfs.i386.ext2.director1200.img metadata file_list.txt ap-models; do
     require_file "$required"
 done
 [ -d "$source_dir/firmwares" ] || fail "vendor archive lacks firmwares/"
-
-metadata_value() {
-    awk -F= -v key="$1" '$1 == key { print $2; exit }' "$metadata"
-}
-[ "$(metadata_value VERSION)" = "10.5.1.0" ] || fail "unexpected vendor version"
-[ "$(metadata_value BUILD)" = "282" ] || fail "unexpected vendor build"
-[ "$(metadata_value REQUIRE_PLATFORM)" = "nar5520" ] || fail "unexpected platform"
-[ "$(metadata_value REQUIRE_SUBPLATFORM)" = "cob7402" ] || fail "unexpected subplatform"
-
-kernel_md5="$(md5sum "$source_dir/bzImage" | awk '{print $1}')"
-rootfs_md5="$(md5sum "$source_dir/rootfs.i386.ext2.director1200.img" | awk '{print $1}')"
-[ "$kernel_md5" = "$(metadata_value KERNEL_MD5SUM)" ] || fail "bzImage MD5 mismatch"
-[ "$rootfs_md5" = "$(metadata_value ROOTFS_MD5SUM)" ] || fail "rootfs MD5 mismatch"
 
 output_dir="$work_dir/image"
 mkdir -p "$output_dir"
@@ -98,10 +81,23 @@ else:
     raise SystemExit("could not locate an ELF kernel inside bzImage")
 PY
 
-tar -C "$source_dir" -czf "$output_dir/zd1051-payload.tar.gz" \
-    firmwares aidfs ap-models file_list.txt
+payload_stage="$staging/payload"
+mkdir "$payload_stage"
+cp -a "$source_dir/firmwares" "$source_dir/ap-models" "$source_dir/file_list.txt" "$payload_stage/"
+if [ -d "$source_dir/aidfs" ]; then
+    cp -a "$source_dir/aidfs" "$payload_stage/"
+    has_aidfs=1
+else
+    has_aidfs=0
+fi
+{
+    printf 'RELEASE_ID=%s\n' "$release_id"
+    awk -F= '$1 == "VERSION" || $1 == "BUILD" { print }' "$metadata"
+    printf 'HAS_AIDFS=%s\n' "$has_aidfs"
+} > "$payload_stage/release-info"
+tar -C "$payload_stage" -czf "$output_dir/zd-payload.tar.gz" .
 "$work_dir/make-boot-initrd.sh"
 
 echo "Prepared local vendor-derived artifacts in $output_dir"
 sha256sum "$output_dir/bzImage" "$output_dir/vmlinux" "$output_dir/rootfs.ext2" \
-    "$output_dir/bootinitramfs.gz" "$output_dir/zd1051-payload.tar.gz"
+    "$output_dir/bootinitramfs.gz" "$output_dir/zd-payload.tar.gz"

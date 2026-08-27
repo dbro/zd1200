@@ -5,7 +5,7 @@ work_dir="$(cd "$(dirname "$0")" && pwd)"
 state_dir="${STATE_DIR:-$work_dir}"
 base_initrd="${BASE_INITRD:-$work_dir/image/bootinitramfs.gz}"
 output="${RUNTIME_INITRD:-$state_dir/bootinitramfs.runtime.gz}"
-payload="${ZD1051_PAYLOAD:-$work_dir/image/zd1051-payload.tar.gz}"
+payload="${ZD_PAYLOAD:-${ZD1051_PAYLOAD:-$work_dir/image/zd-payload.tar.gz}}"
 stamp="$output.sha256"
 
 if [ ! -f "$base_initrd" ]; then
@@ -43,11 +43,11 @@ trap cleanup EXIT
 mkdir -p "$staging/bin"
 cp "$work_dir/boot-initrd-handoff" "$staging/bin/boot-handoff"
 if [ -f "$payload" ]; then
-    mkdir -p "$staging/zd1051-payload"
+    mkdir -p "$staging/zd-payload"
     # The container deliberately drops CAP_CHOWN. GNU tar otherwise notices
     # effective UID 0 and tries to restore the archive's uid/gid 1000, turning
     # an otherwise successful extraction into a fatal error.
-    tar --no-same-owner -xzf "$payload" -C "$staging/zd1051-payload"
+    tar --no-same-owner -xzf "$payload" -C "$staging/zd-payload"
 fi
 if [ -r "$work_dir/zd-dropbear2222/authorized_keys" ]; then
     mkdir -p "$staging/zd-dropbear2222"
@@ -67,7 +67,7 @@ mv -f "$temporary" "$output"
 printf '%s\n' "$signature" > "$stamp"
 echo "Prepared runtime initramfs: $output"
 if [ -f "$payload" ]; then
-    echo "Included ZoneDirector 10.5.1 AP firmware and web payload."
+    echo "Included release-specific ZoneDirector AP firmware and web payload."
 else
-    echo "Warning: ZoneDirector 10.5.1 payload is absent: $payload" >&2
+    echo "Warning: ZoneDirector AP firmware payload is absent: $payload" >&2
 fi

@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: local/zd1200-qemu:10.5.1.0.282
+    image: local/zd1200-qemu:lab
     container_name: ${ZD_CONTAINER_NAME:-zd1200}
     restart: unless-stopped
     init: true

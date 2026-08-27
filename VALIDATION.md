@@ -134,9 +134,9 @@ for a sustained observation period.
 
 ## Regression matrix
 
-| Test | 10.5.1.0.282 R600 isolated bench | Other exact builds/models |
-| --- | --- | --- |
-| Factory wizard at `192.168.0.2` without DHCP | passed | required per build |
+| Test | 10.5.1.0.282 R600 isolated bench | 10.1.2.0.318 / 10.2.1.0.232 / 10.3.1.0.42 isolated bench | Other exact builds/models |
+| --- | --- | --- | --- |
+| Factory wizard at `192.168.0.2` without DHCP | passed | passed — each reached `READY`, returned the HTTPS wizard redirect, and installed its own AP payload |
 | Manual controller address survives restart without DHCP | passed | required per build |
 | AP adoption | passed | required per model |
 | AP static address survives AP/controller restart without DHCP | passed | required per build/model |

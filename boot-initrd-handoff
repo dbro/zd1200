@@ -96,41 +96,45 @@ if /bin/busybox mount -t ext2 -o rw /dev/hda4 /data 2>/dev/null; then
             /bin/busybox chmod 600 "$dd/authorized_keys"
         done
     fi
-    # The root filesystem deliberately omits the AP image and aidfs payloads;
-    # the vendor upgrade installs them on the writable partition. Seed the
-    # complete, checksum-verified 10.5.1 payload once so R600, R650, R850 and
-    # the other models listed by this release are available to the controller.
-    payload=/zd1051-payload
-    # The R600 control file contains the AP image byte counts. Include its
-    # digest in the marker so a rebuilt bundle refreshes a changed AP payload
-    # on an existing controller state volume instead of silently retaining an
-    # older firmware tree.
-    r600_control="$payload/firmwares/r600/10.5.1.0.282/r600_1051_cntrl.rcks"
+    # The root filesystem deliberately omits AP images; vendor upgrades seed
+    # them on the writable partition.  The generated bundle includes its exact
+    # release payload and a tiny layout manifest.  10.1.2 deliberately has no
+    # aidfs tree, while later releases do.
+    payload=/zd-payload
+    payload_version="$(/bin/busybox sed -n 's/^VERSION=//p' "$payload/release-info" 2>/dev/null | /bin/busybox head -n 1)"
+    payload_build="$(/bin/busybox sed -n 's/^BUILD=//p' "$payload/release-info" 2>/dev/null | /bin/busybox head -n 1)"
+    payload_has_aidfs="$(/bin/busybox sed -n 's/^HAS_AIDFS=//p' "$payload/release-info" 2>/dev/null | /bin/busybox head -n 1)"
+    [ -n "$payload_version" ] || payload_version=unknown
+    [ -n "$payload_build" ] || payload_build=unknown
+    # A matching R600 control file carries its image byte counts. Include its
+    # digest in the marker so a rebuilt bundle refreshes changed AP payloads.
+    r600_control="$(/bin/busybox find "$payload/firmwares/r600" -type f -name '*_cntrl.rcks' 2>/dev/null | /bin/busybox head -n 1)"
     if [ -f "$r600_control" ]; then
         payload_digest="$(/bin/busybox md5sum "$r600_control" | /bin/busybox awk '{print $1}')"
-        payload_marker="/data/.zd-10.5.1.0.282-payload-${payload_digest}-installed"
+        payload_marker="/data/.zd-${payload_version}.${payload_build}-payload-${payload_digest}-installed"
     else
-        payload_marker=/data/.zd-10.5.1.0.282-payload-installed
+        payload_marker="/data/.zd-${payload_version}.${payload_build}-payload-installed"
     fi
     firmware_target=/data/etc/airespider-images/firmwares
     if [ ! -f "$payload_marker" ] && [ -d "$payload/firmwares" ] \
-        && [ -d "$payload/aidfs" ] && [ -f "$payload/ap-models" ] \
+        && [ -f "$payload/ap-models" ] \
         && [ -f "$payload/file_list.txt" ]; then
-        echo "BOOT-HANDOFF: installing ZoneDirector 10.5.1 payload" >/dev/console
+        echo "BOOT-HANDOFF: installing ZoneDirector ${payload_version}.${payload_build} payload" >/dev/console
         /bin/busybox rm -rf "$firmware_target" /data/aidfs
-        /bin/busybox mkdir -p "$firmware_target" /data/aidfs
+        /bin/busybox mkdir -p "$firmware_target"
         /bin/busybox cp -a "$payload/firmwares/." "$firmware_target/" >/dev/console 2>&1
-        /bin/busybox cp -a "$payload/aidfs/." /data/aidfs/ >/dev/console 2>&1
+        if [ "$payload_has_aidfs" = 1 ] && [ -d "$payload/aidfs" ]; then
+            /bin/busybox mkdir -p /data/aidfs
+            /bin/busybox cp -a "$payload/aidfs/." /data/aidfs/ >/dev/console 2>&1
+        fi
         /bin/busybox cp -f "$payload/file_list.txt" "$firmware_target/file_list.txt"
         /bin/busybox cp -f "$payload/ap-models" /data/etc/airespider-images/ap-models
         if [ -f "$firmware_target/r600/control" ] \
-            && [ -f "$firmware_target/r650/control" ] \
-            && [ -f "$firmware_target/r850/control" ] \
-            && [ -d /data/aidfs/web/help ]; then
+            && { [ "$payload_has_aidfs" != 1 ] || [ -d /data/aidfs/web/help ]; }; then
             /bin/busybox touch "$payload_marker"
-            echo "BOOT-HANDOFF: ZoneDirector 10.5.1 payload installed" >/dev/console
+            echo "BOOT-HANDOFF: ZoneDirector ${payload_version}.${payload_build} payload installed" >/dev/console
         else
-            echo "BOOT-HANDOFF: ZoneDirector 10.5.1 payload installation failed" >/dev/console
+            echo "BOOT-HANDOFF: ZoneDirector ${payload_version}.${payload_build} payload installation failed" >/dev/console
         fi
     fi
     # The factory wizard's SessionCheck path leaves session["cid"] empty, but
@@ -170,6 +174,16 @@ if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
     /bin/busybox sh -c 'printf "zd1200\n" > /newroot/bin/MODEL'
     /bin/busybox chmod 444 /newroot/bin/MODEL
     /bin/busybox ln -sf /bin/ruckus_cli2 /newroot/bin/rkscli
+    # Several older ZD factory images start udhcpc in background mode and do
+    # not run its documented 192.168.0.2 fallback while no DHCP server exists.
+    # Change only the immutable *factory template*, before it is copied to a
+    # new writable state partition.  The setup wizard remains authoritative
+    # for the eventual DHCP/static production choice.
+    if [ -f /newroot/etc/airespider-default/system.xml ]; then
+        /bin/busybox sed -i \
+            's/<mgmt-ip by-dhcp="true" ip="192\.168\.0\.2"/<mgmt-ip by-dhcp="false" ip="192.168.0.2"/' \
+            /newroot/etc/airespider-default/system.xml
+    fi
     # Bring-up diagnostics are deliberately absent from normal boots.  Their
     # repeated process/map dumps noticeably slow TCG emulation and flood the
     # serial log once the controller is known to initialize correctly.
@@ -262,10 +276,9 @@ ZD_VSFTPD_INIT
     /bin/busybox sed -i 's#^.*\/usr/sbin/irqbalance$#        true#' /newroot/etc/ac_init.sh
     /bin/busybox sed -i 's#echo "start irqbalance\.\.\."#echo "start irqbalance disabled in VM..."; return#' /newroot/etc/ac_init.sh
     if [ "$factory_web_patch" -eq 1 ]; then
-        # The 10.5.1 modules no longer contain the 10.2 conditional branch
-        # that required a one-byte factory-session compatibility patch. Keep
-        # the vendor modules intact unless a boot test proves otherwise.
-        echo "BOOT-HANDOFF: using stock 10.5.1 factory web modules" >/dev/console
+        # Keep vendor factory web modules intact unless a release-specific
+        # boot test proves they need a compatibility patch.
+        echo "BOOT-HANDOFF: using stock factory web modules" >/dev/console
     else
         echo "BOOT-HANDOFF: configured system" >/dev/console
     fi

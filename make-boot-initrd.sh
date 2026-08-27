@@ -14,7 +14,7 @@ cp "$work_dir/boot-initrd-handoff" "$staging/bin/boot-handoff"
 cp "$work_dir/zd-controller-wrapper.sh" "$staging/zd-controller-wrapper.sh"
 cp "$work_dir/zd-memory-snapshot.sh" "$staging/zd-memory-snapshot.sh"
 openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
-    -subj '/CN=zd1200-10.5.1-lab' \
+    -subj '/CN=zd1200-lab' \
     -keyout "$staging/lab-certs/webackey.pem" \
     -out "$staging/lab-certs/webaccert.pem" >/dev/null 2>&1
 as --32 "$work_dir/pivot-exec.S" -o "$staging/pivot-exec.o"

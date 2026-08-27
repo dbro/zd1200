@@ -362,7 +362,7 @@ validated.
 
 ### M3 — Version-independent runtime enhancements
 
-Status: pending
+Status: in progress
 
 Work:
 
@@ -384,6 +384,19 @@ Tests:
 - SSH algorithm negotiation tests with the option on and off;
 - root SSH absent by default and public-key-only when enabled;
 - factory reset and persistent restart behavior.
+
+Progress evidence (2026-08-28): exact encrypted/decrypted manifests now cover
+the local 10.1.2.0.318, 10.2.1.0.232, 10.3.1.0.42, and 10.5.1.0.282 fixtures.
+All five kernel rules matched exactly once and produced release-specific output
+hashes for the three older builds. The bundle/runtime payload is now
+release-aware: 10.1.2's deliberate rootfs-only web layout is accepted while
+later releases retain `aidfs`. On the isolated Linux/KVM bench, each older
+build completed a factory boot, installed its AP payload, reached `READY`, and
+returned the setup-wizard HTTPS redirect at `192.168.0.2` without a DHCP
+server. The synthetic disk now grows its root partition to the selected
+rootfs, required by the 174-MiB 10.1.2 rootfs. These releases remain
+experimental pending wizard, AP-adoption, firmware-delivery, persistence, and
+model-specific validation; 10.3.1.0.42 is explicitly not the final refresh.
 
 Exit criteria:
 

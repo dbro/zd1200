@@ -149,6 +149,16 @@ class ReleaseManifestTests(unittest.TestCase):
         self.assertEqual(release.decrypted_sha256, "64dfbf4d67cc65cafa0e258e426c664c7387b1219209ec893b9b1e41ab202cb8")
         self.assertEqual(release.artifact_ids, ("zd1200_kernel_elf",))
 
+    def test_locally_inventoried_release_ids_are_exact_manifest_entries(self):
+        expected = {
+            "zd1200_10_1_2_0_318": ("10.1.2.0", 318),
+            "zd1200_10_2_1_0_232": ("10.2.1.0", 232),
+            "zd1200_10_3_1_0_42": ("10.3.1.0", 42),
+            "zd1200_10_5_1_0_282": ("10.5.1.0", 282),
+        }
+        actual = {item.release_id: (item.version, item.build) for item in RELEASES}
+        self.assertEqual(actual, expected)
+
     def test_release_manifest_rejects_unknown_artifact_or_fields(self):
         document = {
             "manifest_version": 1,
@@ -283,9 +293,28 @@ class BundleBuilderTests(unittest.TestCase):
             (source / "ap-models").write_text("r600\n", encoding="utf-8")
             (source / "file_list.txt").write_text("file\n", encoding="utf-8")
             first, second = root / "one.tgz", root / "two.tgz"
-            make_payload(source, first)
-            make_payload(source, second)
+            release = next(item for item in RELEASES if item.release_id == "zd1200_10_5_1_0_282")
+            make_payload(source, first, release)
+            make_payload(source, second, release)
             self.assertEqual(first.read_bytes(), second.read_bytes())
+
+    def test_payload_without_aidfs_records_the_legacy_layout(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            source.mkdir()
+            (source / "firmwares").mkdir()
+            (source / "firmwares" / "r600").write_bytes(b"firmware")
+            (source / "ap-models").write_text("r600\n", encoding="ascii")
+            (source / "file_list.txt").write_text("file\n", encoding="ascii")
+            release = next(item for item in RELEASES if item.release_id == "zd1200_10_2_1_0_232")
+            archive_path = root / "payload.tgz"
+            make_payload(source, archive_path, release)
+            with tarfile.open(archive_path, "r:gz") as archive:
+                info = archive.extractfile("release-info")
+                self.assertIsNotNone(info)
+                self.assertIn(b"HAS_AIDFS=0\n", info.read())
+                self.assertNotIn("aidfs", archive.getnames())
 
     def test_kernel_builder_matches_known_patched_fixture(self):
         source = Path("/home/dan/src/zd1200/image/bzImage")
