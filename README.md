@@ -97,14 +97,14 @@ python3 build_zd1200_bundle.py \
 
 The ZIP contains the locally transformed controller image, Docker/runtime
 source, `README-FIRST.md`, and `build-report.json`. It does not include the
-original encrypted input. The report explicitly marks the R600 AP payload as
-unpatched until a BL7 repacker is available.
+original encrypted input. The report explicitly marks the shared
+`ap-11n-scorpion` AP payload as unpatched until a BL7 repacker is selected.
 
 The current catalog defines:
 
 ```text
 zd1200_kernel_elf  ELF32 x86 kernel inside the vendor bzImage gzip member
-r600_wlan_ko       raw ELF32 big-endian MIPS R600 wlan.ko
+ap_11n_scorpion_wlan_ko  raw ELF32 big-endian MIPS shared platform wlan.ko
 ```
 
 The ZD1200 handler locates and decompresses the kernel ELF, applies all five
@@ -119,7 +119,7 @@ python3 patch_binary_artifact.py \
   --out image/bzImage.patched
 ```
 
-The R600 rule operates on an already-extracted module; BL7 filesystem
+The `ap-11n-scorpion` rule operates on an already-extracted module; BL7 filesystem
 extraction and rebuilding remain a separate packaging step. The unsigned BL7
 container can now be parsed and safely round-tripped with `ruckus_bl7.py`; it
 rejects signed ISI/FSI images rather than silently stripping their signatures.
@@ -137,11 +137,14 @@ The command patches exactly one `lib/modules/*/net/wlan.ko`, writes a new
 unsigned image, and leaves the input untouched. It does not process signed
 ISI/FSI images; signed ZD-delivered AP payloads therefore require an ISI/signing
 bypass workflow before this operation. The bundle builder accepts the same two
-tool paths to patch unsigned R600 images in its nested AP payload.
+tool paths to patch the shared `ap-11n-scorpion` payload in its nested AP
+firmware. R600 is the validated model; R500, R310, T300, T300e, T301n, and
+T301s are patched only when they resolve to the exact same vendor BL7 and are
+explicitly reported as **experimental**.
 
 ```sh
 python3 patch_binary_artifact.py \
-  --artifact r600_wlan_ko \
+  --artifact ap_11n_scorpion_wlan_ko \
   --in /path/to/wlan.ko \
   --out /path/to/wlan.ko.patched
 ```
@@ -167,8 +170,8 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now zd1200-bridge.service
 ```
 
-Before adopting an R600, R500, or T300, read the [one-time AP firmware
-prerequisite](VALIDATION.md#one-time-ap-firmware-prerequisite-r600-r500-and-t300).
+Before adopting an ap-11n-scorpion model, read the [one-time AP firmware
+prerequisite](VALIDATION.md#one-time-ap-firmware-prerequisite-ap-11n-scorpion-models).
 An AP still running FSI firmware must first be manually upgraded to a
 compatible ISI image for that exact model; otherwise it will reject the
 unsigned patched UI image delivered by this lab ZD. APs already running UI or

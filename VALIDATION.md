@@ -40,12 +40,12 @@ Record the controller release, guest MAC, generated-image SHA-256, and the
 state-volume backup location. Do not record passwords, session cookies, or
 private keys in an issue or test log.
 
-## One-time AP firmware prerequisite (R600, R500, and T300)
+## One-time AP firmware prerequisite (ap-11n-scorpion models)
 
-R600, R500, and T300 APs running FSI firmware (commonly delivered by newer ZD,
-SmartZone, or Unleashed releases) reject an unsigned UI image. Before adopting
-such an AP to a ZD bundle that delivers an unsigned patched UI image, perform
-this one-time preparation manually:
+R600, R500, R310, T300, T300e, T301n, and T301s APs running FSI firmware
+(commonly delivered by newer ZD, SmartZone, or Unleashed releases) reject an
+unsigned UI image. Before adopting such an AP to a ZD bundle that delivers an
+unsigned patched UI image, perform this one-time preparation manually:
 
 1. Factory-reset the AP and connect it only to the isolated test segment.
 2. Use the AP's standalone upgrade interface to install a compatible ISI image
@@ -58,7 +58,8 @@ An AP already running UI or ISI firmware does not need this step. Never use an
 image for a different model, and do not treat an FSI image as interchangeable
 with ISI. The generated bundle refuses signed ISI/FSI BL7 payloads rather than
 discarding their signatures. The current automated AP-payload patcher is
-validated for R600 only; R500/T300 payload transformation still requires
+validated for R600 only. The exact shared-payload aliases R500, R310, T300,
+T300e, T301n, and T301s are patched as experimental targets and still require
 model-specific validation.
 
 ## AP adoption and static-address persistence
@@ -103,11 +104,13 @@ advertised target. An already-current AP is not evidence that transfer works.
 Pass criteria: a version-changing transfer completes without repeating update
 errors, and the AP rejoins after reboot. This is a per-exact-release test.
 
-## R600 mesh receive-repair regression test
+## ap-11n-scorpion mesh receive-repair regression test
 
 This applies only to a release/model combination recognized by the
-`r600_mesh_vlan_rx` catalog rule. Patch both R600s with the generated AP image;
-do not treat a one-sided patch as proof of interoperability.
+`ap_11n_scorpion_mesh_vlan_rx` catalog rule. R600 is validated. R500, R310,
+T300, T300e, T301n, and T301s use the patch only in experimental state, even
+where their payload is an exact alias of the R600 payload. Patch both APs with
+the generated image; do not treat a one-sided patch as proof of interoperability.
 
 1. Attach the intended root AP by Ethernet. Configure it as `ROOT AP`.
 2. Remove Ethernet from the mesh AP. Configure it as `MESH AP` and, if needed,

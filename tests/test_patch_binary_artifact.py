@@ -10,7 +10,12 @@ from copy import deepcopy
 from pathlib import Path
 
 from binary_patch_catalog import ARTIFACTS, PATCHES, PatchRule, load_catalog
-from build_zd1200_bundle import make_payload, patch_kernel, update_r600_control_files
+from build_zd1200_bundle import (
+    make_payload,
+    patch_kernel,
+    scorpion_payload_paths,
+    update_scorpion_control_files,
+)
 from release_manifest import RELEASES, ReleaseManifest, load_release_manifest
 from ruckus_tac_decrypt import decrypt_bytes, decrypt_file
 from verify_release_archive import sha256_file, verify_decrypted_archive, verify_encrypted_input
@@ -65,7 +70,7 @@ class CatalogTests(unittest.TestCase):
         return path
 
     def test_repository_catalog_has_unique_artifacts_and_rules(self):
-        self.assertEqual(set(ARTIFACTS), {"r600_wlan_ko", "zd1200_kernel_elf"})
+        self.assertEqual(set(ARTIFACTS), {"ap_11n_scorpion_wlan_ko", "zd1200_kernel_elf"})
         self.assertEqual(len({rule.name for rule in PATCHES}), len(PATCHES))
         self.assertTrue(all(rule.artifact_id in ARTIFACTS for rule in PATCHES))
 
@@ -328,9 +333,29 @@ class BundleBuilderTests(unittest.TestCase):
                 "[rcks_fw.bl7.bkup]\n0.0.0.0\npath/bkup\n16682072\n",
                 encoding="ascii",
             )
-            update_r600_control_files(root, 16666624)
+            update_scorpion_control_files(root, {"r600"}, 16666624)
             self.assertNotIn("16682072", control.read_text(encoding="ascii"))
             self.assertEqual(control.read_text(encoding="ascii").count("16666624"), 2)
+
+    def test_scorpion_aliases_require_the_exact_same_payload(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            r600 = root / "firmwares/r600/10.5.1.0.282"
+            r500 = root / "firmwares/r500/10.5.1.0.282"
+            other = root / "firmwares/t300/10.5.1.0.282"
+            r600.mkdir(parents=True)
+            r500.mkdir(parents=True)
+            other.mkdir(parents=True)
+            main = r600 / "rcks_fw.bl7"
+            backup = r600 / "rcks_fw.bl7.bkup"
+            main.write_bytes(b"main")
+            backup.write_bytes(b"backup")
+            (r500 / "rcks_fw.bl7").symlink_to(main)
+            (r500 / "rcks_fw.bl7.bkup").symlink_to(backup)
+            (other / "rcks_fw.bl7").write_bytes(b"different")
+            paths, models = scorpion_payload_paths(root)
+            self.assertEqual(paths, sorted([backup.resolve(), main.resolve()]))
+            self.assertEqual(models, {"r500", "r600"})
 
 
 class PatchRuleTests(unittest.TestCase):

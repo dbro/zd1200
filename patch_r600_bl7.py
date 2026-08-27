@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Patch an unsigned R600 BL7 image without modifying the input file.
+"""Patch an unsigned ap-11n-scorpion BL7 image without modifying the input file.
 
 The R600 rootfs uses Ruckus' historical LZMA SquashFS format.  Supply the
 matching ``unsquashfs`` and ``mksquashfs`` binaries from the GPL-2.0
@@ -39,14 +39,14 @@ def patch_image(
         _run(unsquashfs, "-dest", str(rootfs_dir), str(rootfs_image))
         modules = sorted(rootfs_dir.glob("lib/modules/*/net/wlan.ko"))
         if len(modules) != 1:
-            raise ValueError(f"expected exactly one R600 wlan.ko, found {len(modules)}")
+            raise ValueError(f"expected exactly one ap-11n-scorpion wlan.ko, found {len(modules)}")
         module = modules[0]
         original = module.read_bytes()
         patched, changed = apply_rules(
-            original, rules_for_artifact("r600_wlan_ko"), report=messages.append
+            original, rules_for_artifact("ap_11n_scorpion_wlan_ko"), report=messages.append
         )
         if not changed:
-            messages.append("R600 wlan.ko was already patched")
+            messages.append("ap-11n-scorpion wlan.ko was already patched")
         module.write_bytes(patched)
         _run(mksquashfs, str(rootfs_dir), str(rebuilt_rootfs), "-all-root", "-noappend")
         rebuilt = image.rebuild(rootfs=rebuilt_rootfs.read_bytes())

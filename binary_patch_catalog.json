@@ -2,8 +2,8 @@
   "catalog_version": 1,
   "artifacts": [
     {
-      "artifact_id": "r600_wlan_ko",
-      "description": "R600 firmware ELF32 big-endian MIPS wlan.ko",
+      "artifact_id": "ap_11n_scorpion_wlan_ko",
+      "description": "ap-11n-scorpion firmware ELF32 big-endian MIPS wlan.ko",
       "handler": "raw"
     },
     {
@@ -14,8 +14,8 @@
   ],
   "patches": [
     {
-      "artifact_id": "r600_wlan_ko",
-      "name": "r600_mesh_vlan_rx",
+      "artifact_id": "ap_11n_scorpion_wlan_ko",
+      "name": "ap_11n_scorpion_mesh_vlan_rx",
       "signature_hex": "90 42 00 0c 90 63 00 0d 00 02 12 00 00 62 18 25 34 02 81 00 54 62 ?? ?? 8e a2 01 08 8e a5 01 08 3c 02 ?? ?? 24 06 00 10 24 42 ?? ?? 00 40 f8 09 24 a4 00 02 24 05 00 02 02 00 f8 09 02 a0 20 21",
       "patch_offset": 20,
       "expected_hex": "54 62 ?? ??",

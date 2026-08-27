@@ -3,8 +3,8 @@
 
 The input may be the original TAC-encrypted download or its decrypted gzip-TAR
 form. Vendor bytes remain local: the output ZIP is written only to the path
-chosen by the operator. The current runtime profile transforms the ZD kernel;
-R600 AP BL7 repacking is reported as unavailable rather than guessed.
+chosen by the operator. The current runtime profile transforms the ZD kernel
+and, when requested, the shared ``ap-11n-scorpion`` AP platform payload.
 """
 
 from __future__ import annotations
@@ -107,57 +107,80 @@ def patch_kernel(source: Path, destination: Path, vmlinux: Path | None = None) -
     return messages
 
 
-def patch_r600_payload(
+SCORPION_VALIDATED_MODELS = frozenset({"r600"})
+SCORPION_EXPERIMENTAL_MODELS = frozenset({"r500", "r310", "t300", "t300e", "t301n", "t301s"})
+SCORPION_IMAGE_NAMES = frozenset({"rcks_fw.bl7", "rcks_fw.bl7.bkup"})
+
+
+def scorpion_payload_paths(source_dir: Path) -> tuple[list[Path], set[str]]:
+    """Find platform aliases that resolve to R600's exact vendor BL7 files."""
+    firmware_root = source_dir / "firmwares"
+    r600_paths = sorted(
+        path for path in (firmware_root / "r600").glob("*/*")
+        if path.name in SCORPION_IMAGE_NAMES and path.is_file()
+    )
+    if not r600_paths:
+        raise ValueError("vendor payload contains no R600 ap-11n-scorpion BL7 image")
+    targets = {path.resolve() for path in r600_paths}
+    aliases = {"r600"}
+    for path in firmware_root.glob("*/*/*"):
+        if path.name in SCORPION_IMAGE_NAMES and path.is_file() and path.resolve() in targets:
+            aliases.add(path.relative_to(firmware_root).parts[0].lower())
+    return sorted(targets), aliases
+
+
+def patch_scorpion_payload(
     source_dir: Path,
     *,
     unsquashfs: Path | None = None,
     mksquashfs: Path | None = None,
     override: Path | None = None,
-) -> list[str]:
-    """Patch all R600 BL7 main/backup images in an extracted vendor payload."""
-    candidates = sorted(
-        {path.resolve() for path in (source_dir / "firmwares" / "r600").glob("*/*")
-         if path.name in {"rcks_fw.bl7", "rcks_fw.bl7.bkup"} and path.is_file()}
-    )
-    if not candidates:
-        raise ValueError("vendor payload contains no R600 BL7 main/backup images")
+) -> tuple[list[str], set[str]]:
+    """Patch the shared ap-11n-scorpion BL7 payload and its control metadata."""
+    candidates, aliases = scorpion_payload_paths(source_dir)
     messages: list[str] = []
     if override is not None:
         replacement = override.read_bytes()
         parse_bl7(replacement)
         for path in candidates:
             path.write_bytes(replacement)
-            messages.append(f"replaced R600 payload {path.relative_to(source_dir)} from local UI image")
-        messages.extend(update_r600_control_files(source_dir, len(replacement)))
-        return messages
+            messages.append(f"replaced ap-11n-scorpion payload {path.relative_to(source_dir)} from local UI image")
+        messages.extend(update_scorpion_control_files(source_dir, aliases, len(replacement)))
+        return messages, aliases
     if unsquashfs is None or mksquashfs is None:
-        raise ValueError("R600 payload patching requires SquashFS tools or --r600-bl7")
+        raise ValueError("ap-11n-scorpion payload patching requires SquashFS tools or --r600-bl7")
     for path in candidates:
         temporary = path.with_suffix(path.suffix + ".patched")
-        messages.append(f"patching R600 payload {path.relative_to(source_dir)}")
+        messages.append(f"patching ap-11n-scorpion payload {path.relative_to(source_dir)}")
         messages.extend(
             patch_r600_image(path, temporary, unsquashfs=unsquashfs, mksquashfs=mksquashfs)
         )
         temporary.replace(path)
-    return messages
+    messages.extend(update_scorpion_control_files(source_dir, aliases, candidates[0].stat().st_size))
+    return messages, aliases
 
 
-def update_r600_control_files(source_dir: Path, image_size: int) -> list[str]:
-    """Update the byte-count fields used by ZD when serving R600 BL7 images."""
-    controls = sorted((source_dir / "firmwares" / "r600").glob("*/*_cntrl.rcks"))
+def update_scorpion_control_files(source_dir: Path, models: set[str], image_size: int) -> list[str]:
+    """Update controls only for models resolving to the shared platform image."""
+    controls = sorted({
+        path.resolve()
+        for model in models
+        for path in (source_dir / "firmwares" / model).glob("*/*_cntrl.rcks")
+        if path.is_file()
+    })
     if not controls:
-        raise ValueError("vendor payload contains no R600 control file")
+        raise ValueError("vendor payload contains no ap-11n-scorpion control file")
     messages: list[str] = []
     for control in controls:
         contents = control.read_text(encoding="ascii")
         updated, count = re.subn(r"(?m)^\d+$", str(image_size), contents)
         if count != 2:
             raise ValueError(
-                f"expected two R600 image-size fields in {control.relative_to(source_dir)}, found {count}"
+                f"expected two image-size fields in {control.relative_to(source_dir)}, found {count}"
             )
         control.write_text(updated, encoding="ascii")
         messages.append(
-            f"updated R600 control sizes in {control.relative_to(source_dir)} to {image_size} bytes"
+            f"updated ap-11n-scorpion control sizes in {control.relative_to(source_dir)} to {image_size} bytes"
         )
     return messages
 
@@ -176,12 +199,16 @@ def extract_verified_archive(archive_path: Path, staging: Path, release: Release
     return staging
 
 
-def write_first_readme(path: Path, release: ReleaseManifest, *, r600_patched: bool) -> None:
+def write_first_readme(
+    path: Path, release: ReleaseManifest, *, scorpion_models: set[str] | None
+) -> None:
     scope_note = (
-        "The ZD kernel and R600 AP payload compatibility patches were applied."
-        if r600_patched
+        "The ZD kernel and ap-11n-scorpion AP payload compatibility patches were applied "
+        f"for: {', '.join(sorted(scorpion_models))}. R600 is validated; all other "
+        "listed models are experimental."
+        if scorpion_models is not None
         else
-        "The ZD kernel compatibility patches were applied. The R600 AP payload "
+        "The ZD kernel compatibility patches were applied. The ap-11n-scorpion AP payload "
         "was not patched because SquashFS tools were not selected."
     )
     path.write_text(
@@ -239,21 +266,29 @@ def build_bundle(
         )
         make_boot_initrd(bundle)
         if r600_bl7 is not None or (unsquashfs is not None and mksquashfs is not None):
-            r600_messages = patch_r600_payload(
+            scorpion_messages, scorpion_models = patch_scorpion_payload(
                 source_dir, unsquashfs=unsquashfs, mksquashfs=mksquashfs, override=r600_bl7
             )
-            r600_status: dict[str, object] = {
+            scorpion_status: dict[str, object] = {
                 "status": "patched",
-                "messages": r600_messages,
+                "models": sorted(scorpion_models),
+                "validated_models": sorted(scorpion_models & SCORPION_VALIDATED_MODELS),
+                "experimental_models": sorted(scorpion_models & SCORPION_EXPERIMENTAL_MODELS),
+                "messages": scorpion_messages,
             }
-            r600_warnings: list[str] = []
+            scorpion_warnings = [
+                f"{model} uses the shared ap-11n-scorpion payload but is experimental; "
+                "complete model-specific firmware-delivery and mesh validation before production use."
+                for model in sorted(scorpion_models & SCORPION_EXPERIMENTAL_MODELS)
+            ]
         else:
-            r600_status = {
+            scorpion_models = None
+            scorpion_status = {
                 "status": "not_applied",
                 "reason": "BL7 AP payload repacker not selected; provide both SquashFS tool paths",
             }
-            r600_warnings = [
-                "R600 AP mesh receive repair is not included in this bundle.",
+            scorpion_warnings = [
+                "ap-11n-scorpion AP mesh receive repair is not included in this bundle.",
                 "Run the physical AP validation matrix before describing this release as supported.",
             ]
         make_payload(source_dir, image / "zd1051-payload.tar.gz")
@@ -271,13 +306,13 @@ def build_bundle(
                     "output_sha256": sha256_file(image / "bzImage"),
                     "messages": patch_messages,
                 },
-            "r600_wlan_ko": r600_status,
+            "ap_11n_scorpion_wlan_ko": scorpion_status,
             },
-            "warnings": r600_warnings,
+            "warnings": scorpion_warnings,
         }
         write_first_readme(
             bundle / "README-FIRST.md", release,
-            r600_patched=(r600_bl7 is not None or unsquashfs is not None),
+            scorpion_models=scorpion_models,
         )
         (bundle / "build-report.json").write_text(
             json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"

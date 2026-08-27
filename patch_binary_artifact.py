@@ -252,8 +252,8 @@ def apply_rules(
 ) -> tuple[bytes, bool]:
     """Return ``(result, changed)`` after applying all rules."""
     if rules is None:
-        # Preserve the historical behavior of this R600-specific command.
-        rules = rules_for_artifact("r600_wlan_ko")
+        # Preserve the historical no-argument behavior for the shared AP platform.
+        rules = rules_for_artifact("ap_11n_scorpion_wlan_ko")
     rules = tuple(rules)
     artifact_ids = {rule.artifact_id for rule in rules}
     if len(artifact_ids) > 1:
