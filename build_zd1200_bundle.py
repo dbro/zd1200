@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import tarfile
 import tempfile
 import zipfile
@@ -31,6 +32,8 @@ from verify_release_archive import verify_decrypted_archive, verify_encrypted_in
 REPO_FILES = (
     ".dockerignore", ".env.example", "Dockerfile", "docker-compose.yml",
     "boot-initrd-handoff", "boot-initrd-init", "boot-initrd-inittab",
+    "make-boot-initrd.sh", "pivot-exec.S", "zd-controller-wrapper.sh",
+    "zd-memory-snapshot.sh",
     "limit-process-cpu.py", "make-runtime-initrd.sh", "make-synthetic-cf.py",
     "patch_binary_artifact.py", "run-zd1200-qemu.sh", "run-zd1200-web.sh",
     "write-boarddata.py", "zd-controller-wrapper.sh", "README.md",
@@ -80,6 +83,11 @@ def copy_tree_safe(source: Path, destination: Path) -> None:
         source_file = source / relative
         target = destination / relative
         shutil.copy2(source_file, target)
+
+
+def make_boot_initrd(bundle: Path) -> None:
+    """Build the derived boot initramfs expected by run-zd1200-web.sh."""
+    subprocess.run(["bash", "make-boot-initrd.sh"], cwd=bundle, check=True)
 
 
 def patch_kernel(source: Path, destination: Path, vmlinux: Path | None = None) -> list[str]:
@@ -207,6 +215,7 @@ def build_bundle(
         patch_messages = patch_kernel(
             source_dir / "bzImage", image / "bzImage", image / "vmlinux"
         )
+        make_boot_initrd(bundle)
         if r600_bl7 is not None or (unsquashfs is not None and mksquashfs is not None):
             r600_messages = patch_r600_payload(
                 source_dir, unsquashfs=unsquashfs, mksquashfs=mksquashfs, override=r600_bl7
