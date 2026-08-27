@@ -167,11 +167,13 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now zd1200-bridge.service
 ```
 
-Before adopting an R600, read the [one-time R600 firmware prerequisite](VALIDATION.md#one-time-r600-firmware-prerequisite).
-An R600 still running FSI firmware must first be manually upgraded to a
-compatible R600 ISI image; otherwise it will reject the unsigned patched UI
-image delivered by this lab ZD. APs already running UI or ISI firmware do not
-need this preparation.
+Before adopting an R600, R500, or T300, read the [one-time AP firmware
+prerequisite](VALIDATION.md#one-time-ap-firmware-prerequisite-r600-r500-and-t300).
+An AP still running FSI firmware must first be manually upgraded to a
+compatible ISI image for that exact model; otherwise it will reject the
+unsigned patched UI image delivered by this lab ZD. APs already running UI or
+ISI firmware do not need this preparation. The automated AP-payload patcher is
+currently validated for R600 only.
 
 The bridge service refuses to repurpose an interface carrying the host default
 route. Set `ZD_USB_MAC` in its configuration to the dedicated adapter's MAC as
