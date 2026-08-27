@@ -20,7 +20,6 @@ services:
       MEMORY_MB: "2048"
       NETWORK_MODE: tap
       TAP_IF: ${ZD_TAP_IF:-tap-zd}
-      GUEST_IP: ${ZD_GUEST_IP:-192.168.50.10}
       # The host bridge has no IP, so readiness is checked from the LAN.
       WEB_PROBE: ${ZD_WEB_PROBE:-off}
       # Board data written into the CF image: serial + base MAC (MAC2=MAC1+1).

@@ -179,17 +179,16 @@ The bridge service refuses to repurpose an interface carrying the host default
 route. Set `ZD_USB_MAC` in its configuration to the dedicated adapter's MAC as
 an additional guard.
 
-The USB adapter, bridge, and TAP remain unnumbered on the Docker host. The
-ZoneDirector guest owns `ZD_GUEST_IP`; a management station on the attached LAN
-must perform the web-readiness check. Compose therefore checks that QEMU is
-alive rather than trying to reach the guest through the host network stack.
+The USB adapter, bridge, and TAP remain unnumbered on the Docker host. A
+management station on the attached LAN must perform the web-readiness check.
+Compose therefore checks that QEMU is alive rather than trying to reach the
+guest through the host network stack.
 
-A factory-state ZD requests DHCP and has no usable static management address.
-For first setup, provide a temporary isolated DHCP reservation for the ZD MAC
-and `ZD_GUEST_IP`, complete the wizard with **Manual** addressing, and then
-remove the DHCP service. Do not place the factory guest on an untrusted or
-production LAN. A low-step reservation-only bootstrap helper is tracked in
-the roadmap; it is not yet part of the supported runtime.
+On this factory ZD1200 build, use `https://192.168.0.2/` for the initial setup
+wizard when no DHCP server is present. Set the desired permanent address in the
+wizard (for example, `192.168.222.10/24` for the isolated lab). A temporary,
+isolated DHCP reservation remains an optional fallback, not a standard
+requirement. Do not place the factory guest on an untrusted or production LAN.
 
 After the first factory-wizard completion, restart the container once. The
 vendor administrative SSH service can then generate its persistent host key.

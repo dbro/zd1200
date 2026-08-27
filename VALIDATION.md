@@ -25,16 +25,16 @@ mistake.
 
 ## Initial controller setup
 
-1. Start the bridge and controller. A factory controller needs temporary DHCP
-   only for its first boot. Restrict that DHCP service to the isolated bridge,
-   reserve the guest MAC to the chosen controller address, and stop it after
-   the wizard has saved **Manual** IPv4 settings.
+1. Start the bridge and controller. With no DHCP server on the isolated LAN,
+   the factory image's setup wizard is available at `https://192.168.0.2/`.
 2. Complete the setup wizard. Use the intended regulatory domain (for example,
-   `DE Germany`) and a unique controller serial/base MAC.
+   `DE Germany`), a unique controller serial/base MAC, and **Manual** IPv4
+   settings for the intended lab address.
 3. From the management station, log in at
    `https://<controller-ip>/admin10/login.jsp`.
-4. Restart the controller with the bootstrap DHCP service stopped. Confirm the
-   login page and saved configuration remain available at the manual address.
+4. Restart the controller. Confirm the login page and saved configuration
+   remain available at the manual address. A DHCP reservation is only a
+   fallback if a different exact release does not present the factory address.
 
 Record the controller release, guest MAC, generated-image SHA-256, and the
 state-volume backup location. Do not record passwords, session cookies, or
@@ -133,7 +133,7 @@ for a sustained observation period.
 
 | Test | 10.5.1.0.282 R600 isolated bench | Other exact builds/models |
 | --- | --- | --- |
-| Factory wizard with temporary reservation DHCP | passed | required per build |
+| Factory wizard at `192.168.0.2` without DHCP | passed | required per build |
 | Manual controller address survives restart without DHCP | passed | required per build |
 | AP adoption | passed | required per model |
 | AP static address survives AP/controller restart without DHCP | passed | required per build/model |
