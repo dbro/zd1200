@@ -137,10 +137,17 @@ for a sustained observation period.
 | Manual controller address survives restart without DHCP | passed | required per build |
 | AP adoption | passed | required per model |
 | AP static address survives AP/controller restart without DHCP | passed | required per build/model |
-| Version-changing AP firmware delivery | pending | required per build/model |
-| R600 patched mesh bidirectional traffic | passed in the prior two-R600 lab; repeat from generated bundle | not applicable or required by signature/model |
+| Version-changing AP firmware delivery | passed — R600 ISI `110.0.0.0.675` → patched UI `10.5.1.0.282` | required per build/model |
+| R600 patched mesh bidirectional traffic | pending repeat from the generated bundle; passed in the prior two-R600 lab | not applicable or required by signature/model |
 | Host reboot / bridge recovery | pending operator-performed test | required per host profile |
 | USB-adapter unplug/replug recovery | pending operator-performed test | required per host profile |
+
+The current physical delivery evidence is an R600 deliberately installed with
+ISI `110.0.0.0.675`, then adopted by the factory-configured virtual ZD. The
+controller delivered `R600_10.5.1.0.282-rx-vlan-fix-UNSIGNED.bl7` as Image2.
+`fw show info` reported its expected 16,666,624-byte size and image-header MD5
+`2ACDA0866E032DA153B7C709329DDE41`; after an AP reboot, `get director` again
+reported `RUN` and `get version` reported `10.5.1.0.282`.
 
 Do not mark a release/profile supported until every applicable row passes with
 the transformed bundle built from that exact vendor download.

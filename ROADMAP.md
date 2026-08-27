@@ -435,27 +435,26 @@ Current Linux x86-64 bench evidence (2026-08-27):
   the configured USB MAC;
 - QEMU/KVM booted the signature-patched 10.5.1.0.282 kernel from Compose and
   remained healthy with the host bridge unnumbered;
-- a reservation-only, temporary DHCP endpoint assigned `192.168.222.10` to the
-  factory ZD and `192.168.222.13` to a factory-reset R600; both responded from
-  the independent management laptop;
-- ZD factory setup completed with Germany (`DE`) as the regulatory domain, DFS
-  enabled, IPv4 management fixed at `192.168.222.10/24`, and its generated
-  administrator credential retained outside the repository;
-- the factory-reset R600 (`94:f6:65:0c:60:b0`) was automatically discovered,
-  approved, and reached controller state `1` at `192.168.222.13`;
-- ZD's supported AP configuration path changed the R600 from DHCP/keep-setting
-  to static `192.168.222.13/24`; an AP restart with the DHCP endpoint stopped
-  proved that the address persisted and that the AP rejoined in state `1`;
-- a ZD container restart with DHCP still stopped proved that the controller's
-  static address, completed wizard state, login, AP record, and AP discovery
-  persisted; the temporary DHCP container and network were then removed;
+- the latest clean factory run needed no DHCP: the ZD was reached at its
+  factory address `192.168.0.2`, then the wizard set it to
+  `192.168.222.10/24`; the R600 was statically configured as
+  `192.168.222.13/24`;
+- ZD factory setup completed with Germany (`DE`) as the regulatory domain and
+  DFS enabled; its generated administrator credential remains outside the
+  repository;
+- the ISI-installed R600 (`94:f6:65:0c:60:b0`) was discovered and adopted by
+  the fresh ZD, then automatically upgraded from `110.0.0.0.675` to the
+  bundled patched unsigned `10.5.1.0.282` image;
+- `fw show info` confirmed Image2 as
+  `R600_10.5.1.0.282-rx-vlan-fix-UNSIGNED.bl7`, size `16666624`, header MD5
+  `2ACDA0866E032DA153B7C709329DDE41`; after an AP reboot it rejoined in `RUN`
+  state and reported `10.5.1.0.282`;
 - after validation, the host management NIC remained `192.168.20.41/24` and
   the dedicated USB NIC plus `br-zd` remained unnumbered;
-- actual AP firmware transfer, host restart, and USB unplug/replug recovery
-  remain outstanding. The AP reports `10.5.1.0.282`, but that alone is not
-  evidence that this bench transferred the image. A prior two-R600 lab
-  established bidirectional management traffic with the receive repair; repeat
-  that mesh test from the generated bundle before calling the bundle validated.
+- host restart, USB unplug/replug recovery, and a two-R600 mesh run from the
+  generated bundle remain outstanding. A prior two-R600 lab established
+  bidirectional management traffic with the receive repair; repeat that mesh
+  test before calling the bundle fully validated.
 
 ### M5 — Release validation matrix
 
