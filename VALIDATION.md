@@ -40,6 +40,25 @@ Record the controller release, guest MAC, generated-image SHA-256, and the
 state-volume backup location. Do not record passwords, session cookies, or
 private keys in an issue or test log.
 
+## One-time R600 firmware prerequisite
+
+An R600 running FSI firmware (commonly delivered by newer ZD, SmartZone, or
+Unleashed releases) rejects the unsigned UI image produced by this project.
+Before adopting such an AP to the patched ZD, perform this one-time
+preparation manually:
+
+1. Factory-reset the R600 and connect it only to the isolated test segment.
+2. Use the AP's standalone upgrade interface to install a compatible R600 ISI
+   image obtained from a legitimate Ruckus download.
+3. Reboot and verify that the AP is actually running the ISI image.
+4. Only then connect/adopt it to the patched ZD1200 and allow AP firmware
+   delivery.
+
+An AP already running UI or ISI firmware does not need this step. Never use an
+image for a different model, and do not treat an FSI image as interchangeable
+with ISI. The generated bundle refuses signed ISI/FSI BL7 payloads rather than
+discarding their signatures.
+
 ## AP adoption and static-address persistence
 
 1. Factory-reset one AP and attach it to the isolated switch. If it needs an
