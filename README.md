@@ -164,10 +164,12 @@ For a physical Ethernet attachment, configure the dedicated adapter in
 ```sh
 sudo install -m 0755 host/zd1200-bridge /usr/local/sbin/zd1200-bridge
 sudo install -m 0644 host/zd1200-bridge.service /etc/systemd/system/
+sudo install -m 0644 host/zd1200-bridge-watch.service /etc/systemd/system/
 sudo install -m 0600 host/zd1200-bridge.env.example /etc/default/zd1200-bridge
 sudoedit /etc/default/zd1200-bridge
 sudo systemctl daemon-reload
 sudo systemctl enable --now zd1200-bridge.service
+sudo systemctl enable --now zd1200-bridge-watch.service
 ```
 
 Before adopting an ap-11n-scorpion model, read the [one-time AP firmware
@@ -182,8 +184,10 @@ The bridge service refuses to repurpose an interface carrying the host default
 route. Set `ZD_USB_MAC` in its configuration to the dedicated adapter's MAC as
 an additional guard.
 
-The USB adapter, bridge, and TAP remain unnumbered on the Docker host. A
-management station on the attached LAN must perform the web-readiness check.
+The USB adapter, bridge, and TAP remain unnumbered on the Docker host. A small
+systemd watcher reattaches only the configured USB adapter after a physical
+unplug/replug without restarting the container; all other adapters are ignored.
+A management station on the attached LAN must perform the web-readiness check.
 Compose therefore checks that QEMU is alive rather than trying to reach the
 guest through the host network stack.
 
@@ -192,6 +196,8 @@ wizard when no DHCP server is present. Set the desired permanent address in the
 wizard (for example, `192.168.222.10/24` for the isolated lab). A temporary,
 isolated DHCP reservation remains an optional fallback, not a standard
 requirement. Do not place the factory guest on an untrusted or production LAN.
+If desired, set `ZD_GUEST_IP` in `.env` after the wizard; it only makes the
+startup status line show the known address and does not configure the guest.
 
 After the first factory-wizard completion, restart the container once. The
 vendor administrative SSH service can then generate its persistent host key.

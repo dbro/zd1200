@@ -22,6 +22,9 @@ services:
       TAP_IF: ${ZD_TAP_IF:-tap-zd}
       # The host bridge has no IP, so readiness is checked from the LAN.
       WEB_PROBE: ${ZD_WEB_PROBE:-off}
+      # Optional informational address (and required only if WEB_PROBE=on).
+      # It does not configure the guest; use the ZD wizard for that.
+      GUEST_IP: ${ZD_GUEST_IP:-}
       # Board data written into the CF image: serial + base MAC (MAC2=MAC1+1).
       ZD_SERIAL: ${ZD_SERIAL:-123456000789}
       ZD_MAC1: ${ZD_MAC1:-02:52:54:12:00:01}

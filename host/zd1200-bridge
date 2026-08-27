@@ -21,16 +21,51 @@ disable_ip() {
     ip address flush dev "$interface" || true
 }
 
-start_bridge() {
-    [ -e "/sys/class/net/$usb_if" ] || fail "missing USB interface $usb_if"
+attach_usb() {
+    local interface="${1:-$usb_if}"
+    # The udev-triggered unit is intentionally generic for USB NICs. Ignore
+    # every device except the explicitly configured dedicated adapter.
+    [ "$interface" = "$usb_if" ] || return 0
+    [ -e "/sys/class/net/$interface" ] || fail "missing USB interface $interface"
     if [ -n "$expected_mac" ]; then
-        actual_mac="$(tr '[:upper:]' '[:lower:]' < "/sys/class/net/$usb_if/address")"
+        actual_mac="$(tr '[:upper:]' '[:lower:]' < "/sys/class/net/$interface/address")"
         [ "$actual_mac" = "${expected_mac,,}" ] ||
-            fail "$usb_if has MAC $actual_mac, expected $expected_mac"
+            fail "$interface has MAC $actual_mac, expected $expected_mac"
     fi
-    if ip route show default | grep -qE "(^| )dev ${usb_if}( |$)"; then
-        fail "refusing to repurpose default-route interface $usb_if"
+    if ip route show default | grep -qE "(^| )dev ${interface}( |$)"; then
+        fail "refusing to repurpose default-route interface $interface"
     fi
+
+    disable_ip "$interface"
+    ip link set dev "$interface" down
+    ip link set dev "$interface" master "$bridge_if"
+    ip link set dev "$interface" promisc on
+    ip link set dev "$interface" up
+}
+
+usb_is_attached() {
+    [ -e "/sys/class/net/$usb_if/master" ] || return 1
+    [ "$(basename "$(readlink -f "/sys/class/net/$usb_if/master")")" = "$bridge_if" ]
+}
+
+watch_bridge() {
+    local interval="${ZD_USB_WATCH_INTERVAL:-2}"
+    [[ "$interval" =~ ^[1-9][0-9]*$ ]] || fail "ZD_USB_WATCH_INTERVAL must be a positive integer"
+    while true; do
+        if [ -e "/sys/class/net/$usb_if" ] && ! usb_is_attached; then
+            # A missing or unexpected device remains safely detached; retry
+            # after the configured interval in case enumeration is incomplete.
+            if [ -e "/sys/class/net/$bridge_if" ] && [ -e "/sys/class/net/$tap_if" ]; then
+                attach_usb "$usb_if" || true
+            else
+                start_bridge || true
+            fi
+        fi
+        sleep "$interval"
+    done
+}
+
+start_bridge() {
 
     if [ ! -e "/sys/class/net/$bridge_if" ]; then
         ip link add name "$bridge_if" type bridge
@@ -39,11 +74,6 @@ start_bridge() {
         fail "$bridge_if exists but is not a bridge"
     ip link set dev "$bridge_if" type bridge stp_state 0 forward_delay 0
     disable_ip "$bridge_if"
-
-    ip link set dev "$usb_if" down
-    disable_ip "$usb_if"
-    ip link set dev "$usb_if" master "$bridge_if"
-    ip link set dev "$usb_if" promisc on
 
     if [ ! -e "/sys/class/net/$tap_if" ]; then
         ip tuntap add dev "$tap_if" mode tap user root
@@ -55,7 +85,7 @@ start_bridge() {
 
     ip link set dev "$bridge_if" up
     ip link set dev "$tap_if" up
-    ip link set dev "$usb_if" up
+    attach_usb "$usb_if"
     echo "ZD1200 layer-2 path ready: $usb_if -> $bridge_if -> $tap_if"
 }
 
@@ -79,7 +109,9 @@ stop_bridge() {
 
 case "${1:-}" in
     start) start_bridge ;;
+    attach) attach_usb "${2:-}" ;;
+    watch) watch_bridge ;;
     stop) stop_bridge ;;
     restart) stop_bridge; start_bridge ;;
-    *) fail "usage: $0 {start|stop|restart}" ;;
+    *) fail "usage: $0 {start|attach <ifname>|watch|stop|restart}" ;;
 esac

@@ -80,7 +80,11 @@ def copy_tree_safe(source: Path, destination: Path) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_file, target)
     (destination / "host").mkdir()
-    for relative in ("host/zd1200-bridge", "host/zd1200-bridge.service", "host/zd1200-bridge.env.example"):
+    for relative in (
+        "host/zd1200-bridge", "host/zd1200-bridge.service",
+        "host/zd1200-bridge-watch.service",
+        "host/zd1200-bridge.env.example",
+    ):
         source_file = source / relative
         target = destination / relative
         shutil.copy2(source_file, target)

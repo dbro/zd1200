@@ -1,0 +1,14 @@
+[Unit]
+Description=Keep the dedicated ZD1200 USB Ethernet adapter attached to br-zd
+After=zd1200-bridge.service
+Wants=zd1200-bridge.service
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=2
+EnvironmentFile=-/etc/default/zd1200-bridge
+ExecStart=/usr/local/sbin/zd1200-bridge watch
+
+[Install]
+WantedBy=multi-user.target

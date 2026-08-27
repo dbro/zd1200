@@ -142,8 +142,8 @@ for a sustained observation period.
 | AP static address survives AP/controller restart without DHCP | passed | required per build/model |
 | Version-changing AP firmware delivery | passed — R600 ISI `110.0.0.0.675` → patched UI `10.5.1.0.282` | required per build/model |
 | R600 patched mesh bidirectional traffic | pending repeat from the generated bundle; passed in the prior two-R600 lab | not applicable or required by signature/model |
-| Host reboot / bridge recovery | pending operator-performed test | required per host profile |
-| USB-adapter unplug/replug recovery | pending operator-performed test | required per host profile |
+| Host reboot / bridge recovery | passed — bridge, TAP, ZD, and R600 recovered | required per host profile |
+| USB-adapter unplug/replug recovery | passed — watcher reattached the USB NIC; ZD container stayed at restart count 0 | required per host profile |
 
 The current physical delivery evidence is an R600 deliberately installed with
 ISI `110.0.0.0.675`, then adopted by the factory-configured virtual ZD. The

@@ -451,10 +451,16 @@ Current Linux x86-64 bench evidence (2026-08-27):
   state and reported `10.5.1.0.282`;
 - after validation, the host management NIC remained `192.168.20.41/24` and
   the dedicated USB NIC plus `br-zd` remained unnumbered;
-- host restart, USB unplug/replug recovery, and a two-R600 mesh run from the
-  generated bundle remain outstanding. A prior two-R600 lab established
-  bidirectional management traffic with the receive repair; repeat that mesh
-  test before calling the bundle fully validated.
+- a host reboot recreated the bridge/TAP and returned the container, ZD, and
+  R600 without manual recovery;
+- the original boot-only helper did not recover from a USB unplug/replug. The
+  installed watcher subsequently reattached the re-enumerated USB NIC to
+  `br-zd`; the ZD container remained at restart count zero and both the ZD and
+  R600 again responded from the independent laptop;
+- the generated-bundle two-R600 mesh run remains outstanding. A prior
+  byte-identical two-R600 lab established bidirectional management traffic with
+  the receive repair; record the delivered BL7 SHA-256 on both APs if this is
+  accepted as sufficient evidence rather than repeating the radio test.
 
 ### M5 — Release validation matrix
 
