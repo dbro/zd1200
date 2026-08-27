@@ -21,6 +21,7 @@ from patch_binary_artifact import (
     parse_masked_hex,
     rebuild_artifact,
 )
+from ruckus_bl7 import parse_bl7
 
 
 def rule(
@@ -292,6 +293,30 @@ class BundleBuilderTests(unittest.TestCase):
                 hashlib.sha256(output.read_bytes()).hexdigest(),
                 "c3014270e817be56b2b3c79223bbb588ac8c28130662f35c42b77ede2c609803",
             )
+
+    def test_r600_bl7_round_trip_preserves_known_ui_image(self):
+        source = Path(
+            "/home/dan/src/zd1200/reverse-engineering/r600-wlan/"
+            "R600_10.5.1.0.282-unmodified-repack-UNSIGNED.bl7"
+        )
+        if not source.is_file():
+            self.skipTest("local proprietary AP fixture is unavailable")
+        original = source.read_bytes()
+        image = parse_bl7(original)
+        self.assertEqual(image.version, "10.5.1.0.282")
+        self.assertEqual(image.rebuild(), original)
+
+    def test_r600_bl7_refuses_signed_image(self):
+        source = Path(
+            "/home/dan/src/zd1200/reverse-engineering/r600-wlan/"
+            "R600_10.5.1.0.282-unmodified-repack-UNSIGNED.bl7"
+        )
+        if not source.is_file():
+            self.skipTest("local proprietary AP fixture is unavailable")
+        signed = bytearray(source.read_bytes())
+        signed[0x84:0x88] = (1).to_bytes(4, "big")
+        with self.assertRaisesRegex(ValueError, "signed ISI/FSI"):
+            parse_bl7(bytes(signed))
 
 
 class PatchRuleTests(unittest.TestCase):

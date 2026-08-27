@@ -120,7 +120,11 @@ python3 patch_binary_artifact.py \
 ```
 
 The R600 rule operates on an already-extracted module; BL7 filesystem
-extraction and rebuilding remain a separate packaging step:
+extraction and rebuilding remain a separate packaging step. The unsigned BL7
+container can now be parsed and safely round-tripped with `ruckus_bl7.py`; it
+rejects signed ISI/FSI images rather than silently stripping their signatures.
+SquashFS extraction/rebuild and integration of the module rule are still
+pending:
 
 ```sh
 python3 patch_binary_artifact.py \

@@ -349,7 +349,10 @@ run produced a ZIP that passed `unzip -t`, repeated with identical SHA-256
 contained the complete runnable source/image layout. A full encrypted-input
 packaging run remains pending completion outside the terminal sandbox's
 process-duration limit; its decryption and archive verification are tested
-separately.
+separately. `ruckus_bl7.py` now validates and round-trips the known unsigned
+R600 BL7 container, recalculating offsets, payload MD5, and header checksum;
+signed ISI/FSI images fail closed. SquashFS handling and AP-module integration
+remain the next packaging task.
 
 ### M3 — Version-independent runtime enhancements
 

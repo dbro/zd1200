@@ -35,7 +35,7 @@ REPO_FILES = (
     "ZD1200-LAB-GUIDE.md", "VALIDATION.md", "binary_patch_catalog.json",
     "binary_patch_catalog.py", "binary_patch_catalog.schema.json",
     "release_manifest.json", "release_manifest.py", "release_manifest.schema.json",
-    "verify_release_archive.py", "ruckus_tac_decrypt.py", "LICENSE",
+    "verify_release_archive.py", "ruckus_tac_decrypt.py", "ruckus_bl7.py", "LICENSE",
     "THIRD_PARTY_NOTICES.md",
 )
 
