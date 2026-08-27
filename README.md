@@ -87,6 +87,19 @@ python3 verify_release_archive.py /path/to/zd1200_10.5.1.0.282.ap_10.5.1.0.282.i
 It verifies the exact archive SHA-256, TAR path/link safety, required layout,
 and expected vendor metadata without extracting or modifying the archive.
 
+For the current 10.5.1 release, the deterministic local bundle builder is:
+
+```sh
+python3 build_zd1200_bundle.py \
+  /path/to/zd1200_10.5.1.0.282.ap_10.5.1.0.282.img \
+  /path/to/zd1200-10.5.1.0.282-bundle.zip
+```
+
+The ZIP contains the locally transformed controller image, Docker/runtime
+source, `README-FIRST.md`, and `build-report.json`. It does not include the
+original encrypted input. The report explicitly marks the R600 AP payload as
+unpatched until a BL7 repacker is available.
+
 The current catalog defines:
 
 ```text
@@ -199,6 +212,7 @@ host/zd1200-bridge            host/zd1200-bridge.service     host/zd1200-bridge.
 README.md                     LICENSE                         .gitignore                     .dockerignore
 PROVENANCE.md                 ROADMAP.md                      VALIDATION.md
 THIRD_PARTY_NOTICES.md        ruckus_tac_decrypt.py
+build_zd1200_bundle.py
 ```
 
 `limit-process-cpu.py` is retained only for the automatic TCG fallback, not

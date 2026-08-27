@@ -340,6 +340,17 @@ command accepts either exact encrypted or exact already-decrypted input and
 performs hash/structure/metadata verification locally. Generalized extraction,
 runtime generation, and per-release patch selection remain pending.
 
+The initial `build_zd1200_bundle.py` now assembles a local Docker bundle,
+applies the kernel catalog rules, emits `build-report.json`, and marks the
+unimplemented R600 BL7 repacker explicitly. Payload-TAR creation and the known
+kernel output have deterministic tests. A local 10.5.1.0.282 decrypted-input
+run produced a ZIP that passed `unzip -t`, repeated with identical SHA-256
+`f65693b66eac35b1ec6b6ee86e9452b0fe10fc2f240f5a4ba10939b2cc9b8880`, and
+contained the complete runnable source/image layout. A full encrypted-input
+packaging run remains pending completion outside the terminal sandbox's
+process-duration limit; its decryption and archive verification are tested
+separately.
+
 ### M3 — Version-independent runtime enhancements
 
 Status: pending

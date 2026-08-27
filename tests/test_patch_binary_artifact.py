@@ -1,4 +1,5 @@
 import gzip
+import hashlib
 import io
 import json
 import struct
@@ -9,6 +10,7 @@ from copy import deepcopy
 from pathlib import Path
 
 from binary_patch_catalog import ARTIFACTS, PATCHES, PatchRule, load_catalog
+from build_zd1200_bundle import make_payload, patch_kernel
 from release_manifest import RELEASES, ReleaseManifest, load_release_manifest
 from ruckus_tac_decrypt import decrypt_bytes, decrypt_file
 from verify_release_archive import sha256_file, verify_decrypted_archive, verify_encrypted_input
@@ -260,6 +262,36 @@ class TacDecryptionTests(unittest.TestCase):
             path.write_bytes(b"changed")
             with self.assertRaisesRegex(ValueError, "encrypted SHA-256 mismatch"):
                 verify_encrypted_input(path, release)
+
+
+class BundleBuilderTests(unittest.TestCase):
+    def test_payload_tar_is_reproducible(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source"
+            source.mkdir()
+            (source / "firmwares").mkdir()
+            (source / "aidfs").mkdir()
+            (source / "firmwares" / "r600").write_bytes(b"firmware")
+            (source / "aidfs" / "file").write_bytes(b"aidfs")
+            (source / "ap-models").write_text("r600\n", encoding="utf-8")
+            (source / "file_list.txt").write_text("file\n", encoding="utf-8")
+            first, second = root / "one.tgz", root / "two.tgz"
+            make_payload(source, first)
+            make_payload(source, second)
+            self.assertEqual(first.read_bytes(), second.read_bytes())
+
+    def test_kernel_builder_matches_known_patched_fixture(self):
+        source = Path("/home/dan/src/zd1200/image/bzImage")
+        if not source.is_file():
+            self.skipTest("local proprietary kernel fixture is unavailable")
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "bzImage.patched"
+            patch_kernel(source, output)
+            self.assertEqual(
+                hashlib.sha256(output.read_bytes()).hexdigest(),
+                "c3014270e817be56b2b3c79223bbb588ac8c28130662f35c42b77ede2c609803",
+            )
 
 
 class PatchRuleTests(unittest.TestCase):
