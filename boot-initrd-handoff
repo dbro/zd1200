@@ -177,14 +177,12 @@ if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
     /bin/busybox rm -f /newroot/etc/init.d/S98backend_diag
     /bin/busybox cp -f /zd-memory-snapshot.sh /newroot/etc/init.d/S98memory_snapshot
     /bin/busybox chmod 755 /newroot/etc/init.d/S98memory_snapshot
-    # The rootfs /etc/passwd is a symlink into the data partition's account
-    # DB; provide a real system passwd so system auth (dropbear getpwnam)
-    # always resolves regardless of /writable mount timing.  Root's shell is
-    # /bin/ash because the vendor /etc/shells lists /bin/ash (and /sbin/rkscli)
-    # but not /bin/sh — dropbear rejects users whose shell is not in /etc/shells.
+    # Keep the vendor account database path. In particular, legacy AP-image
+    # FTP authenticates its internal service account through this writable
+    # database. Replacing it with a static passwd file makes vsftpd listen but
+    # rejects every AP login. Dropbear's shell check is handled below instead.
     /bin/busybox rm -f /newroot/etc/passwd
-    /bin/busybox sh -c 'printf "root:x:0:0:root:/root:/bin/ash\ndaemon:x:1:1:daemon:/usr/sbin:/bin/false\nbin:x:2:2:bin:/bin:/bin/sh\nsys:x:3:3:sys:/dev:/bin/sh\nadm:x:4:4:adm:/var/adm:/bin/sh\nlp:x:7:7:lp:/var/spool/lpd:/bin/sh\nnobody:x:65534:65534:nobody:/:/bin/false\n" > /newroot/etc/passwd'
-    /bin/busybox chmod 644 /newroot/etc/passwd
+    /bin/busybox ln -s /writable/etc/config/passwd /newroot/etc/passwd
     /bin/busybox sh -c 'printf "/bin/ash\n/bin/sh\n/sbin/rkscli\n" > /newroot/etc/shells'
     /bin/busybox chmod 644 /newroot/etc/shells
     # Remove any old diagnostic listener before considering an opt-in payload.

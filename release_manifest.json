@@ -63,7 +63,7 @@
       ],
       "artifact_ids": ["zd1200_kernel_elf"],
       "features": {
-        "ftp_ap_delivery": "unverified",
+        "ftp_ap_delivery": "verified_legacy_ftp_r600",
         "r600_mesh_receive_repair": "available_when_ap_payload_is_repacked"
       }
     }

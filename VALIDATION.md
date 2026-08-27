@@ -140,7 +140,7 @@ for a sustained observation period.
 | Manual controller address survives restart without DHCP | passed | required per build |
 | AP adoption | passed | required per model |
 | AP static address survives AP/controller restart without DHCP | passed | required per build/model |
-| Version-changing AP firmware delivery | passed — R600 ISI `110.0.0.0.675` → patched UI `10.5.1.0.282` | required per build/model |
+| Version-changing AP firmware delivery | passed — R600 ISI `110.0.0.0.675` → patched UI `10.5.1.0.282`, using both secured HTTPS and legacy FTP delivery | required per build/model |
 | R600 patched mesh bidirectional traffic | pending repeat from the generated bundle; passed in the prior two-R600 lab | not applicable or required by signature/model |
 | Host reboot / bridge recovery | passed — bridge, TAP, ZD, and R600 recovered | required per host profile |
 | USB-adapter unplug/replug recovery | passed — watcher reattached the USB NIC; ZD container stayed at restart count 0 | required per host profile |

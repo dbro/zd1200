@@ -449,6 +449,11 @@ Current Linux x86-64 bench evidence (2026-08-27):
   `R600_10.5.1.0.282-rx-vlan-fix-UNSIGNED.bl7`, size `16666624`, header MD5
   `2ACDA0866E032DA153B7C709329DDE41`; after an AP reboot it rejoined in `RUN`
   state and reported `10.5.1.0.282`;
+- both AP-image delivery modes were exercised: secured HTTPS on TCP 11443 and
+  legacy FTP on TCP 21. Legacy FTP initially reached vsftpd but returned `530`
+  for the AP service account because the runtime had replaced the vendor
+  writable account-database symlink; restoring that path allowed the R600
+  image delivery to complete;
 - after validation, the host management NIC remained `192.168.20.41/24` and
   the dedicated USB NIC plus `br-zd` remained unnumbered;
 - a host reboot recreated the bridge/TAP and returned the container, ZD, and
