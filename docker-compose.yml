@@ -37,6 +37,10 @@ services:
 
     cap_drop:
       - ALL
+    # QEMU must issue TUNSETIFF for the pre-created TAP device. Keep the
+    # privilege narrow: the container retains no other Linux capabilities.
+    cap_add:
+      - NET_ADMIN
     security_opt:
       - no-new-privileges:true
     stop_grace_period: 20s
