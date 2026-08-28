@@ -8,6 +8,8 @@ output="${RUNTIME_INITRD:-$state_dir/bootinitramfs.runtime.gz}"
 payload="${ZD_PAYLOAD:-${ZD1051_PAYLOAD:-$work_dir/image/zd-payload.tar.gz}}"
 stamp="$output.sha256"
 enable_ecdsa_ssh="${ZD_ENABLE_ECDSA_SSH:-0}"
+enable_root_cli="${ZD_ENABLE_ROOT_CLI:-0}"
+support_entitlement_end="${ZD_SUPPORT_ENTITLEMENT_END:-}"
 
 case "$enable_ecdsa_ssh" in
     0|1) ;;
@@ -16,6 +18,28 @@ case "$enable_ecdsa_ssh" in
         exit 2
         ;;
 esac
+
+case "$enable_root_cli" in
+    0|1) ;;
+    *)
+        echo "ZD_ENABLE_ROOT_CLI must be 0 or 1 (got: $enable_root_cli)" >&2
+        exit 2
+        ;;
+esac
+
+support_entitlement_end_epoch=0
+if [ -n "$support_entitlement_end" ]; then
+    if ! parsed_end="$(date -u -d "$support_entitlement_end" +%F 2>/dev/null)" \
+        || [ "$parsed_end" != "$support_entitlement_end" ]; then
+        echo "ZD_SUPPORT_ENTITLEMENT_END must be a valid YYYY-MM-DD date (got: $support_entitlement_end)" >&2
+        exit 2
+    fi
+    support_entitlement_end_epoch="$(date -u -d "$support_entitlement_end 00:00:00" +%s)"
+    if [ "$support_entitlement_end_epoch" -le 1262304000 ]; then
+        echo "ZD_SUPPORT_ENTITLEMENT_END must be later than 2010-01-01" >&2
+        exit 2
+    fi
+fi
 
 if [ ! -f "$base_initrd" ]; then
     echo "Missing base initramfs: $base_initrd" >&2
@@ -39,6 +63,8 @@ fi
 signature="$({
     sha256sum "${sources[@]}"
     printf 'ZD_ENABLE_ECDSA_SSH=%s\n' "$enable_ecdsa_ssh"
+    printf 'ZD_ENABLE_ROOT_CLI=%s\n' "$enable_root_cli"
+    printf 'ZD_SUPPORT_ENTITLEMENT_END=%s\n' "$support_entitlement_end"
     printf 'ZD_RUNTIME_OPTIONS_FORMAT=1\n'
 } | sha256sum | awk '{print $1}')"
 if [ -s "$output" ] && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$signature" ]; then
@@ -76,7 +102,11 @@ if [ -r "$work_dir/zd-dropbear2222/authorized_keys" ]; then
 fi
 
 # The boot handoff validates this small, data-only file before using it.
-printf 'ENABLE_ECDSA_SSH=%s\n' "$enable_ecdsa_ssh" > "$staging/zd-runtime-options"
+{
+    printf 'ENABLE_ECDSA_SSH=%s\n' "$enable_ecdsa_ssh"
+    printf 'ENABLE_ROOT_CLI=%s\n' "$enable_root_cli"
+    printf 'SUPPORT_ENTITLEMENT_END_EPOCH=%s\n' "$support_entitlement_end_epoch"
+} > "$staging/zd-runtime-options"
 
 chmod 755 "$staging/bin/boot-handoff"
 chmod 755 "$staging/zd-controller-wrapper.sh" "$staging/zd-memory-snapshot.sh"

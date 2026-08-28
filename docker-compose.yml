@@ -30,6 +30,10 @@ services:
       ZD_MAC1: ${ZD_MAC1:-02:52:54:12:00:01}
       # Keep RSA; optionally advertise an additional ECDSA host key.
       ZD_ENABLE_ECDSA_SSH: ${ZD_ENABLE_ECDSA_SSH:-0}
+      # Opt-in local diagnostic root CLI; it adds no network listener.
+      ZD_ENABLE_ROOT_CLI: ${ZD_ENABLE_ROOT_CLI:-0}
+      # Optional finite support entitlement end date (YYYY-MM-DD).
+      ZD_SUPPORT_ENTITLEMENT_END: ${ZD_SUPPORT_ENTITLEMENT_END:-}
       # Work around the 2.6.32 tickless-idle spin demonstrated in cpu-study.
       KERNEL_EXTRA: nohz=off
       WEB_WAIT_SECONDS: "600"
