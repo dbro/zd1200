@@ -109,7 +109,7 @@ python3 verify_release_archive.py /path/to/zd1200_10.5.1.0.282.ap_10.5.1.0.282.i
 It verifies the exact archive SHA-256, TAR path/link safety, required layout,
 and expected vendor metadata without extracting or modifying the archive.
 
-For any recognized release, the deterministic local bundle builder is:
+For any recognized release, the local bundle builder is:
 
 ```sh
 python3 build_zd1200_bundle.py \
@@ -131,6 +131,10 @@ The ZIP contains the locally transformed controller image, Docker/runtime
 source, `README-FIRST.md`, and `build-report.json`. It does not include the
 original encrypted input. The report explicitly marks the shared
 `ap-11n-scorpion` AP payload as unpatched until a BL7 repacker is selected.
+The transformed firmware artifacts are reproducible for a fixed input and
+options. The final ZIP deliberately receives a fresh self-signed bootstrap TLS
+identity, so its overall ZIP hash is not expected to repeat across separate
+builds.
 
 The current catalog defines:
 

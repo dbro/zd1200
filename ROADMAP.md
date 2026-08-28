@@ -299,9 +299,9 @@ catalog currently lists `.232` as the latest 10.2.1 release; Ruckus's
 identifies it as MR2 Refresh7. These are catalog observations, not substitutes
 for per-build boot and hardware validation.
 
-### M2 — Deterministic command-line bundle builder
+### M2 — Local command-line bundle builder
 
-Status: in progress
+Status: complete for the four exact manifest releases
 
 Work:
 
@@ -311,18 +311,22 @@ Work:
 - apply artifact handlers and patch sets selected by the manifest;
 - normalize the root filesystem input without mutating the original;
 - generate Docker/runtime templates, `.env`, and `README-FIRST.md`;
-- produce a deterministic ZIP and a machine-readable build report;
+- produce a locally reproducible transformed bundle and a machine-readable
+  build report;
 - never include the original encrypted input in the output.
 
 Tests:
 
-- golden output hashes for locally held fixtures;
+- release-specific local fixture builds (the vendor-containing output ZIPs are
+  intentionally not committed as golden fixtures);
 - encrypted and decrypted inputs for the same build produce equivalent bundles;
 - malicious archive-path fixtures are rejected;
 - corrupted, unsupported, ambiguous, and already-patched inputs behave as
   documented;
-- repeat builds with the same inputs/options are byte-for-byte reproducible,
-  excluding explicitly documented timestamps if unavoidable.
+- repeat builds with the same inputs/options produce equivalent transformed
+  vendor artifacts and reports. The final ZIP intentionally contains a newly
+  generated self-signed bootstrap TLS identity, so its ZIP hash is not a
+  reproducibility assertion and must not be used as one.
 
 Exit criteria:
 
@@ -340,7 +344,7 @@ command accepts either exact encrypted or exact already-decrypted input and
 performs hash/structure/metadata verification locally. Generalized extraction,
 runtime generation, and per-release patch selection remain pending.
 
-The initial `build_zd1200_bundle.py` now assembles a local Docker bundle,
+`build_zd1200_bundle.py` now assembles a local Docker bundle,
 applies the kernel catalog rules, emits `build-report.json`, and marks the
 unimplemented R600 BL7 repacker explicitly. Payload-TAR creation and the known
 kernel output have deterministic tests. A local 10.5.1.0.282 decrypted-input
@@ -357,8 +361,15 @@ invokes compatible GPL SquashFS tools, patches exactly one R600 `wlan.ko`, and
 rebuilds a new UI image without overwriting the input. The bundle builder now
 uses it for unsigned R600 payloads when both tool paths are supplied; signed
 ISI/FSI payloads fail closed and still require a signing-bypass workflow.
-Non-root extraction behavior and a complete signed-image user path remain to be
-validated.
+Non-root extraction behavior and the complete signed-image user path have been
+validated on the isolated R600 bench. On 2026-08-29, the builder successfully
+accepted each locally held encrypted exact fixture (10.1.2.0.318,
+10.2.1.0.232, 10.3.1.0.42, and 10.5.1.0.282), selected the release by full
+input SHA-256 rather than filename or weak archive metadata, produced a ZIP
+that passed `unzip -t`, and emitted a machine-readable stdout report. The
+10.5 encrypted and decrypted inputs were also verified to produce equivalent
+transformed controller artifacts; only the input-provenance report and the
+fresh bootstrap TLS identity differ between final ZIPs.
 
 ### M3 — Version-independent runtime enhancements
 
