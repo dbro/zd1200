@@ -43,7 +43,7 @@ Silicon is not enough.
 | Release family | Reason | Exact build status |
 | --- | --- | --- |
 | 10.5.1.0.282 | Primary known-working release and R600 mesh-repair target | Known |
-| 10.3.1.0.45 | Last 10.3.1 refresh listed by Ruckus; local fixture is older `.42` | Obtain/decrypt `.45`; `.42` is experimental only |
+| 10.3.1.0.42 | Public-download 10.3.1 target | Local fixture available; physical AP adoption and delivery remain experimental |
 | 10.2.1.0.232 | Latest 10.2.1 refresh currently listed by Ruckus | Local fixture available; unsigned-image behavior must be verified |
 | 10.1.2.0.318 | Latest 10.1.2 refresh currently listed by Ruckus | Local fixture available; H500 behavior must be verified |
 
@@ -398,8 +398,9 @@ rootfs, required by the 174-MiB 10.1.2 rootfs. 10.1.2.0.318 additionally
 completed R600 ISI adoption, legacy-FTP firmware delivery to its signed FSI,
 and post-upgrade `RUN` validation. The older releases remain experimental
 pending persistence and model-specific validation; 10.2.1.0.232 and
-10.3.1.0.42 still require physical AP adoption and firmware-delivery tests,
-and 10.3.1.0.42 is explicitly not the final refresh.
+10.3.1.0.42 still require physical AP adoption and firmware-delivery tests.
+The Premium-only `.45` security refresh is out of scope for compatibility
+validation unless a fixture becomes available.
 
 Exit criteria:
 
@@ -496,7 +497,7 @@ Validate, in order:
 
 1. 10.5.1.0.282;
 2. 10.2.1.0.232;
-3. 10.3.1.0.45 (obtain fixture; `.42` can be exercised separately);
+3. 10.3.1.0.42;
 4. 10.1.2.0.318.
 
 For each exact build, record:
@@ -641,8 +642,8 @@ Stop and request input only when progress requires:
 
 ## Open items requiring definition or evidence
 
-- Obtain a local 10.3.1.0.45 fixture; official release listings show the
-  available `.42` fixture is not the final 10.3.1 refresh.
+- A 10.3.1.0.45 fixture is optional only; it is a Premium-only security
+  refresh, while the public 10.3.1.0.42 build is the compatibility target.
 - Confirmation of what 10.2.1.0.232 unsigned-image behavior must be retained.
 - Exact implementation and desired compatibility effect of “enable ECDSA SSH.”
 - Existing method/signatures for support-agreement expiration changes.
