@@ -1,5 +1,11 @@
 # ZD1200 Lab Guide — patched kernel + optional diagnostic Dropbear
 
+> Historical developer notes. The source-only project no longer ships the
+> prebuilt Dropbear/OpenSSH payload described below, because its provenance was
+> not suitable for release. The supported recovery mechanism is the optional
+> local root CLI documented in `README.md`; do not treat port-2222 SSH or this
+> guide's external payload build as a supported generated-bundle feature.
+
 This guide covers the QEMU lab for the Ruckus ZoneDirector 1200 (10.5.1.0.282)
 that was brought up in this directory, and specifically how to run **your own
 build** of dropbear 2026.94 + OpenSSH sftp-server (from `../src/out/`) on
@@ -185,11 +191,15 @@ does not come up.
    fed a fixed input size; inflate stops at the trailer, so zero padding
    after it is fine).
 
-5. **Boot-time and watchdog.**  Without the patches the stock kernel halts
-   at `nar5520_wdt_init` → `System halted.`  With them, a TCG boot to the
-   login page / dropbear takes ~2–4 minutes; the first kernel serial output
-   appears only after decompression, so be patient before concluding it
-   hangs.
+5. **Boot-time, watchdog, and restart.**  The stock COB7402/NAR5520 watchdog
+   path reaches `kernel_halt()` during early boot.  The patch catalog disables
+   only `nar5520_wdt_init()` and `nar5520_wdt_thread()`.  It leaves the general
+   `kernel_halt()` path intact, but replaces the appliance-specific
+   `machine_restart()` entry with QEMU's i8042 system-reset command; a ZD web
+   restart therefore performs a real guest reboot rather than halting the VM.
+   A TCG boot to the login page / dropbear takes ~2–4 minutes; the first kernel
+   serial output appears only after decompression, so be patient before
+   concluding it hangs.
 
 6. **Auth "Permission denied (publickey)" has three layers.**
    - `/etc/passwd` on the rootfs is a **symlink** (target
@@ -243,7 +253,7 @@ does not come up.
 | symptom | likely cause / fix |
 |---|---|
 | handoff `mount /dev/hda2 … Invalid argument` | rootfs still gzip — see hint #2 |
-| `System halted.` right after `nar5520_wdt_init` | unpatched kernel — run `patch-kernel.py` |
+| `System halted.` right after `nar5520_wdt_init` | unpatched kernel — apply the `zd1200_kernel_elf` catalog rules |
 | guest EIP sleds through zeros after boot | loader tail was overwritten — rebuild with `patch-kernel.py` |
 | `segfault at 14` from dropbear* | TLS canary build — rebuild with hardening off |
 | `Permission denied (publickey)` | passwd symlink / `/etc/shells` / key perms — see hint #6 |

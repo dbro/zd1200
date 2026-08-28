@@ -22,8 +22,8 @@ hash and metadata, never by a filename alone.
 | Exact build | Status | Bench evidence |
 | --- | --- | --- |
 | 10.5.1.0.282 | known | controller, R600 adoption, HTTPS and legacy FTP delivery validated |
-| 10.3.1.0.42 | experimental | public-download 10.3 target; fresh controller boot and factory HTTPS validated |
-| 10.2.1.0.232 | experimental | fresh controller boot and factory HTTPS validated |
+| 10.3.1.0.42 | experimental | controller, R600 signed FSI delivery over FTP, and AP `RUN` validated |
+| 10.2.1.0.232 | experimental | controller, R600 ISI adoption, signed FSI delivery, and AP `RUN` validated |
 | 10.1.2.0.318 | experimental | controller, R600 ISI adoption, legacy FTP delivery, FSI boot, and AP `RUN` validated |
 
 The included [MIT License](LICENSE) applies only to this repository's original
@@ -46,8 +46,10 @@ ignored by Git and must never be committed.
 ## Prerequisites
 
 - x86_64 Linux host with KVM (`/dev/kvm`) and Docker Compose.
-- A dedicated Layer-2 path for the guest if it will manage real APs. The host
-  must not have an IP address on that adapter, bridge, or TAP interface.
+- A Layer-2 path for the guest if it will manage real APs. The recommended
+  dedicated-adapter profile keeps the host unnumbered on its adapter, bridge,
+  and TAP interface. An existing-host-bridge profile is available for an
+  intentionally shared LAN.
 - Host tools for preparation: Bash, Python 3, `tar`, `gzip`, `cpio`,
   `openssl`, GNU binutils (`as`, `ld`), `md5sum`, and `sha256sum`.
 
@@ -129,7 +131,7 @@ zd1200_kernel_elf  ELF32 x86 kernel inside the vendor bzImage gzip member
 ap_11n_scorpion_wlan_ko  raw ELF32 big-endian MIPS shared platform wlan.ko
 ```
 
-The ZD1200 handler locates and decompresses the kernel ELF, applies all five
+The ZD1200 handler locates and decompresses the kernel ELF, applies all six
 registered patches, recompresses it, pads the gzip member to its original
 length, and splices it back without moving the vendor loader tail. Defaults are
 compatible with the lab launcher:
@@ -140,6 +142,16 @@ python3 patch_binary_artifact.py \
   --in image/bzImage \
   --out image/bzImage.patched
 ```
+
+Those rules suppress only the physical NAR5520 watchdog startup/worker paths
+and replace the appliance-specific guest reset entry point with QEMU's i8042
+system-reset command. They do not disable the kernel's general halt path or
+use a host-side log watcher to manufacture a reboot.
+
+The vendor loader reserves a fixed-size gzip member. To keep that boundary
+unchanged on especially tight releases, the catalog clears a name in the ELF
+section-name table, which is not mapped by any loadable program segment and is
+not used by the running kernel.
 
 The `ap-11n-scorpion` rule operates on an already-extracted module; BL7 filesystem
 extraction and rebuilding remain a separate packaging step. The unsigned BL7
@@ -180,8 +192,10 @@ writing the output. Reapplying a patch is idempotent.
 path if the large, generated files should live elsewhere. `.env`, `image/`, VM
 disks, logs and state are excluded by `.gitignore`.
 
-For a physical Ethernet attachment, configure the dedicated adapter in
-`host/zd1200-bridge.env.example`, then install the files as follows:
+For a physical Ethernet attachment, install the bridge helper and choose one
+of the profiles below. The controller is a factory appliance on first boot;
+use an isolated lab unless you have deliberately prepared a shared management
+LAN.
 
 ```sh
 sudo install -m 0755 host/zd1200-bridge /usr/local/sbin/zd1200-bridge
@@ -190,8 +204,43 @@ sudo install -m 0644 host/zd1200-bridge-watch.service /etc/systemd/system/
 sudo install -m 0600 host/zd1200-bridge.env.example /etc/default/zd1200-bridge
 sudoedit /etc/default/zd1200-bridge
 sudo systemctl daemon-reload
+```
+
+### Dedicated adapter (recommended)
+
+In `/etc/default/zd1200-bridge`, keep `ZD_NETWORK_PROFILE=dedicated`, set
+`ZD_USB_IF` to the dedicated Ethernet adapter and set `ZD_USB_MAC` to its MAC.
+The helper creates the unnumbered `br-zd` and `tap-zd` path, and refuses to
+start if either the selected adapter or `br-zd` carries the host's default
+route. It also recreates that path after a USB unplug/replug.
+
+```sh
+sudo /usr/local/sbin/zd1200-bridge check
 sudo systemctl enable --now zd1200-bridge.service
 sudo systemctl enable --now zd1200-bridge-watch.service
+```
+
+### Existing Linux bridge (advanced shared-LAN profile)
+
+Use this only when the Docker host already has a Linux bridge, such as `br0`,
+created and managed by its network configuration. That bridge may retain the
+host address and default route. Set the following in
+`/etc/default/zd1200-bridge` and leave `ZD_USB_IF` and `ZD_USB_MAC` unset:
+
+```ini
+ZD_NETWORK_PROFILE=existing-bridge
+ZD_BRIDGE_IF=br0
+ZD_TAP_IF=tap-zd
+```
+
+The helper only creates/removes and attaches `tap-zd`; it never changes the
+existing bridge, its member NICs, addresses, routes, STP settings, or default
+route. Do not enable `zd1200-bridge-watch.service` for this profile: there is
+no dedicated USB adapter to watch.
+
+```sh
+sudo /usr/local/sbin/zd1200-bridge check
+sudo systemctl enable --now zd1200-bridge.service
 ```
 
 Before adopting an ap-11n-scorpion model, read the [one-time AP firmware
@@ -202,16 +251,19 @@ unsigned patched UI image delivered by this lab ZD. APs already running UI or
 ISI firmware do not need this preparation. The automated AP-payload patcher is
 currently validated for R600 only.
 
-The bridge service refuses to repurpose an interface carrying the host default
-route. Set `ZD_USB_MAC` in its configuration to the dedicated adapter's MAC as
-an additional guard.
+The dedicated profile refuses to repurpose an interface carrying the host
+default route. Set `ZD_USB_MAC` as an additional guard. Its USB adapter,
+bridge, and TAP remain unnumbered, and the watcher reattaches only that
+configured adapter after an unplug/replug. In the existing-bridge profile,
+the operator-owned bridge retains its host networking and only the TAP is
+managed by this project.
 
-The USB adapter, bridge, and TAP remain unnumbered on the Docker host. A small
-systemd watcher reattaches only the configured USB adapter after a physical
-unplug/replug without restarting the container; all other adapters are ignored.
-A management station on the attached LAN must perform the web-readiness check.
-Compose therefore checks that QEMU is alive rather than trying to reach the
-guest through the host network stack.
+To remove the dedicated path, stop Compose and both services; the helper
+detaches the adapter and removes `br-zd` and `tap-zd`. To remove the
+existing-bridge path, stop Compose and `zd1200-bridge.service`; only `tap-zd`
+is removed and the pre-existing bridge is left untouched. See
+[`VALIDATION.md`](VALIDATION.md#network-profiles-recovery-and-safety) for the
+full recovery checks.
 
 On this factory ZD1200 build, use `https://192.168.0.2/` for the initial setup
 wizard when no DHCP server is present. Set the desired permanent address in the
@@ -223,8 +275,35 @@ startup status line show the known address and does not configure the guest.
 
 After the first factory-wizard completion, restart the container once. The
 vendor administrative SSH service can then generate its persistent host key.
-The separate diagnostic root-SSH listener is disabled by default; it must
-never be enabled with a repository-provided key.
+By default it offers its vendor RSA host key only. Set
+`ZD_ENABLE_ECDSA_SSH=1` in `.env` before starting the container to retain RSA
+and offer an additional ECDSA host key on that same administrative SSH
+listener. The option is reversible: setting it back to `0` restores the vendor
+launcher on the next boot. It changes host-key compatibility only; it does not
+enable root access or weaken account authentication.
+
+`ZD_ENABLE_ROOT_CLI=1` is a separate, deliberately opt-in lab/recovery option.
+It uses the vendor CLI script hook and adds no listener or SSH account. An
+authenticated CLI administrator can then enter `enable`, `debug`, `script`, and
+`exec .root.sh` to obtain a local root shell. Disable the setting and restart
+to remove only this project's hook.
+
+Set `ZD_SUPPORT_ENTITLEMENT_END=YYYY-MM-DD` to create an enabled, finite support
+entitlement record before the controller starts; the date must be later than
+`2010-01-01`. Leave it unset to preserve the vendor support-entitlement state.
+For a long-lived isolated lab, `2100-01-01` is a practical value.
+
+### Health status
+
+Docker reports the container as healthy only after the emulated guest has a
+running `webs` process and an HTTP or HTTPS listening socket. This is stronger
+than checking that QEMU exists: a guest which has shut down or is stuck during
+a reboot becomes unhealthy. The physical-LAN TAP bridge remains unnumbered;
+the check uses a guest-generated serial readiness marker rather than assigning
+an otherwise unnecessary management address to the Docker host.
+The separate diagnostic root-SSH development hook is not included in source
+bundles. It must remain disabled unless a future reproducible, licensed
+implementation and an operator-provided public key are available.
 
 ## Runtime notes
 
@@ -234,9 +313,11 @@ never be enabled with a repository-provided key.
 - `CPU_LIMIT` is intentionally absent for KVM. The old duty-cycle limiter only
   added SIGSTOP/SIGCONT pauses and delayed useful work. `nice -n 10` remains
   and only lowers scheduling priority under contention.
-- The synthetic platform identity and guest MAC are fixed by the runtime patch.
-  Do not run two instances on the same Layer-2 network without changing that
-  implementation and validating the board-data checksum behavior.
+- Each new state volume receives a generated 12-digit serial number and a
+  locally administered unicast MAC; both are retained in
+  `board-identity.env` within that volume. The synthetic board data and QEMU
+  NIC use the same base MAC. To use a chosen identity, set both `ZD_SERIAL`
+  and `ZD_MAC1` before first start; MAC2 is derived as MAC1 + 1.
 - The generated state volume contains controller configuration and AP state.
   Back it up before experiments; deleting it returns the VM to factory setup.
 
@@ -259,7 +340,8 @@ Dockerfile                    docker-compose.yml             .env.example
 boot-initrd-handoff           boot-initrd-init               boot-initrd-inittab
 make-boot-initrd.sh           make-runtime-initrd.sh         prepare-vendor-image.sh
 make-synthetic-cf.py          pivot-exec.S                   run-zd1200-qemu.sh
-run-zd1200-web.sh             zd-controller-wrapper.sh       zd-memory-snapshot.sh
+run-zd1200-web.sh             zd-controller-wrapper.sh       zd-healthcheck.sh
+zd-memory-snapshot.sh
 zd1200-patch.gdb              limit-process-cpu.py            patch_binary_artifact.py
 binary_patch_catalog.py
 release_manifest.py             verify_release_archive.py

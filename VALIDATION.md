@@ -4,11 +4,12 @@ This runbook validates a generated ZD1200 lab bundle on an isolated Ethernet
 segment. It is intentionally a controller-and-AP test, not merely a test that
 the web UI loads. Do not attach the segment to a production network.
 
-## Topology and safety checks
+## Network profiles, recovery, and safety
 
-Use one dedicated Ethernet adapter on the Docker host, a small isolated switch,
-and one management station. The adapter, bridge, and TAP device must have no
-IPv4 or IPv6 address; the ZoneDirector guest owns the management address.
+The recommended topology is one dedicated Ethernet adapter on the Docker host,
+a small isolated switch, and one management station. In this profile, the
+adapter, bridge, and TAP device have no IPv4 or IPv6 address; the ZoneDirector
+guest owns the management address.
 
 Before starting the bridge service, verify that the proposed physical adapter
 does not carry the host's default route:
@@ -19,9 +20,44 @@ ip -br addr
 ```
 
 Configure the bridge helper with the physical adapter's MAC as well as its
-name. The helper refuses an adapter that carries the host default route. This
-does not make a production network safe; it prevents a common destructive lab
-mistake.
+name. The helper refuses an adapter that carries the host default route, and
+also refuses the dedicated profile if its `br-zd` already carries that route.
+Run its non-mutating preflight before enabling the services:
+
+```sh
+sudo /usr/local/sbin/zd1200-bridge check
+```
+
+For an intentionally shared management LAN, use
+`ZD_NETWORK_PROFILE=existing-bridge` and point `ZD_BRIDGE_IF` at a Linux bridge
+which was created and is owned by the host's network configuration. The helper
+only creates and attaches `tap-zd`; it must not be given the physical member
+interface and it does not alter the bridge's addresses, routes, members, or
+STP configuration. This is an advanced profile: do not put an unconfigured
+factory ZD on a production or untrusted LAN, and assign a non-conflicting
+static guest address immediately in the setup wizard.
+
+### Removal and recovery
+
+For the dedicated profile, stop the controller and helper services. This
+removes `tap-zd` and `br-zd`, and detaches the dedicated adapter without
+changing the host's primary network interface:
+
+```sh
+docker compose down
+sudo systemctl disable --now zd1200-bridge-watch.service zd1200-bridge.service
+ip -br link show br-zd tap-zd  # both should be absent
+```
+
+To recover it, reconnect the configured adapter, run
+`sudo /usr/local/sbin/zd1200-bridge check`, then re-enable both services. If
+the adapter is to be reused as an ordinary host NIC, restore its addressing
+through the host's network manager after it has been detached.
+
+For the existing-bridge profile, stop Compose and only
+`zd1200-bridge.service`. The helper deletes `tap-zd` but deliberately leaves
+the existing bridge, its physical members, and its host IP/default route in
+place. Do not enable the dedicated-adapter watcher for this profile.
 
 ## Initial controller setup
 
@@ -39,6 +75,32 @@ mistake.
 Record the controller release, guest MAC, generated-image SHA-256, and the
 state-volume backup location. Do not record passwords, session cookies, or
 private keys in an issue or test log.
+
+### Optional ECDSA SSH host key
+
+With the default `ZD_ENABLE_ECDSA_SSH=0`, verify that the normal administrative
+SSH service remains reachable with its RSA host key. To test the optional
+compatibility setting, set `ZD_ENABLE_ECDSA_SSH=1`, recreate the container,
+and restart the guest after the wizard is complete. Verify that SSH offers both
+RSA and ECDSA host keys, and that a legacy RSA-only client still connects. Set
+the option back to `0`, restart once more, and verify that the ECDSA key is no
+longer advertised. This setting does not create a root-login path.
+
+### Optional root CLI and support entitlement
+
+With both `ZD_ENABLE_ROOT_CLI=0` and `ZD_SUPPORT_ENTITLEMENT_END` unset, verify
+that `.root.sh` is unavailable from `debug` → `script` and that the controller's
+existing support state is unchanged. For root-CLI testing, set
+`ZD_ENABLE_ROOT_CLI=1`, recreate the container, and use `exec .root.sh` from an
+authenticated administrative CLI session. Confirm `id` reports UID 0, then set
+the option back to `0`, recreate, and confirm the hook is gone. No network port
+should be added in either state.
+
+For entitlement testing, set `ZD_SUPPORT_ENTITLEMENT_END=2100-01-01`, recreate,
+and confirm the support-entitlement warning is absent in the web UI after the
+controller reaches `RUN`. Verify the generated record uses the controller's
+actual serial and finite UTC end date, then test a malformed and a
+`2010-01-01` value: both must fail before QEMU starts.
 
 ## One-time AP firmware prerequisite (ap-11n-scorpion models)
 
@@ -143,9 +205,9 @@ for a sustained observation period.
 | --- | --- | --- | --- |
 | Factory wizard at `192.168.0.2` without DHCP | passed | passed — each reached `READY`, returned the HTTPS wizard redirect, and installed its own AP payload |
 | Manual controller address survives restart without DHCP | passed | required per build |
-| AP adoption | passed | required per model |
+| AP adoption | passed | 10.1.2.0.318, 10.2.1.0.232, and 10.3.1.0.42 passed — R600 reached `RUN` |
 | AP static address survives AP/controller restart without DHCP | passed | required per build/model |
-| Version-changing AP firmware delivery | passed — R600 ISI `110.0.0.0.675` → patched UI `10.5.1.0.282`, using both secured HTTPS and legacy FTP delivery | 10.1.2.0.318 passed — R600 ISI `110.0.0.0.675` → signed FSI `10.1.2.0.318` using legacy FTP; 10.2.1.0.232 and 10.3.1.0.42 required |
+| Version-changing AP firmware delivery | passed — R600 ISI `110.0.0.0.675` → patched UI `10.5.1.0.282`, using both secured HTTPS and legacy FTP delivery | 10.1.2.0.318 passed — R600 ISI `110.0.0.0.675` → signed FSI `10.1.2.0.318` using legacy FTP; 10.2.1.0.232 passed — R600 ISI `110.0.0.0.675` → signed FSI `10.2.1.0.232`, header MD5 `695FAFD1411902882A81364804796ACF`, then `RUN`; 10.3.1.0.42 passed — signed FSI delivery over FTP, 16,714,840-byte payload and `226 Transfer complete`, then `RUN` |
 | R600 patched mesh bidirectional traffic | pending repeat from the generated bundle; passed in the prior two-R600 lab | not applicable or required by signature/model |
 | Host reboot / bridge recovery | passed — bridge, TAP, ZD, and R600 recovered | required per host profile |
 | USB-adapter unplug/replug recovery | passed — watcher reattached the USB NIC; ZD container stayed at restart count 0 | required per host profile |

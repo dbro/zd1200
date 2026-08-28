@@ -43,9 +43,9 @@ Silicon is not enough.
 | Release family | Reason | Exact build status |
 | --- | --- | --- |
 | 10.5.1.0.282 | Primary known-working release and R600 mesh-repair target | Known |
-| 10.3.1.0.42 | Public-download 10.3.1 target | Local fixture available; physical AP adoption and delivery remain experimental |
-| 10.2.1.0.232 | Latest 10.2.1 refresh currently listed by Ruckus | Local fixture available; unsigned-image behavior must be verified |
-| 10.1.2.0.318 | Latest 10.1.2 refresh currently listed by Ruckus | Local fixture available; H500 behavior must be verified |
+| 10.3.1.0.42 | Public-download 10.3.1 target | Controller/R600 signed-FSI FTP delivery and `RUN` validated; other models experimental |
+| 10.2.1.0.232 | Latest 10.2.1 refresh currently listed by Ruckus | Controller/R600 signed-FSI FTP delivery and `RUN` validated; other models experimental |
+| 10.1.2.0.318 | Latest 10.1.2 refresh currently listed by Ruckus | Controller/R600 signed-FSI FTP delivery and `RUN` validated; H500 untested |
 
 Support is per exact build, not merely per marketing version. A build becomes
 supported only after its archive layout, hashes, patch signatures, boot path,
@@ -61,8 +61,7 @@ The first browser UI should support:
 - support-agreement expiration date, with an empty value meaning no expiry;
 - R600 mesh receive repair when its affected signature is present;
 - FTP-based AP firmware delivery for releases that require it;
-- ECDSA SSH compatibility, after the exact algorithm/configuration change is
-  defined (ECDSA is a key/signature algorithm, not an encryption cipher);
+- optional ECDSA SSH host-key compatibility alongside RSA;
 - optional diagnostic root SSH, enabled only when the user supplies a valid
   public key;
 - serial number and locally administered unicast base MAC address;
@@ -83,8 +82,9 @@ enhancements belong in an Advanced section with an explanation of their effect.
 6. Select **Build ZIP**. A Web Worker decrypts, extracts, validates, patches,
    and packages locally.
 7. Download and extract the generated ZIP.
-8. Attach a dedicated Ethernet adapter as documented, adjust `.env` or
-   `compose.yaml` if necessary, then run:
+8. Attach a dedicated Ethernet adapter (recommended), or prepare an existing
+   host-owned Linux bridge for the advanced shared-LAN profile, as documented;
+   adjust `.env` or `compose.yaml` if necessary, then run:
 
    ```sh
    docker compose build
@@ -268,7 +268,7 @@ environment override for the supported archive hash. Local
 proprietary-fixture integration reproduced the known patched R600 module
 exactly (SHA-256
 `57bc0e93174a4f73fd8b82834ac0b375a2875fc64527c6605d6b84a7e64cdaf4`)
-and produced the known patched ZD kernel container SHA-256
+and produced the then-known patched ZD kernel container SHA-256
 `c3014270e817be56b2b3c79223bbb588ac8c28130662f35c42b77ede2c609803`.
 The Linux x86-64 Docker image build completed locally and the resulting image
 loaded all six catalog rules.
@@ -387,7 +387,7 @@ Tests:
 
 Progress evidence (2026-08-28): exact encrypted/decrypted manifests now cover
 the local 10.1.2.0.318, 10.2.1.0.232, 10.3.1.0.42, and 10.5.1.0.282 fixtures.
-All five kernel rules matched exactly once and produced release-specific output
+All six kernel rules matched exactly once and produced release-specific output
 hashes for the three older builds. The bundle/runtime payload is now
 release-aware: 10.1.2's deliberate rootfs-only web layout is accepted while
 later releases retain `aidfs`. On the isolated Linux/KVM bench, each older
@@ -396,9 +396,14 @@ returned the setup-wizard HTTPS redirect at `192.168.0.2` without a DHCP
 server. The synthetic disk now grows its root partition to the selected
 rootfs, required by the 174-MiB 10.1.2 rootfs. 10.1.2.0.318 additionally
 completed R600 ISI adoption, legacy-FTP firmware delivery to its signed FSI,
-and post-upgrade `RUN` validation. The older releases remain experimental
-pending persistence and model-specific validation; 10.2.1.0.232 and
-10.3.1.0.42 still require physical AP adoption and firmware-delivery tests.
+and post-upgrade `RUN` validation. The 10.2.1.0.232 and 10.3.1.0.42 builds
+have also completed physical R600 adoption, FTP firmware delivery, and
+post-upgrade `RUN` validation. The older releases remain experimental pending
+persistence and model-specific validation. The runtime overlay now has an
+opt-in ECDSA host-key setting: it preserves RSA, generates an ECDSA Dropbear
+key before the vendor SSH service starts, and restores the unmodified vendor
+launcher when disabled. Physical algorithm-negotiation validation remains
+outstanding.
 The Premium-only `.45` security refresh is out of scope for compatibility
 validation unless a fixture becomes available.
 
@@ -410,7 +415,9 @@ Exit criteria:
 
 ### M4 — Linux physical-AP networking
 
-Status: in progress
+Status: complete for the validated dedicated-adapter profile; existing-bridge
+is implemented as an explicitly advanced profile and awaits physical-host
+evidence.
 
 Work:
 
@@ -418,7 +425,10 @@ Work:
   Ethernet adapter from Docker;
 - compare the existing host systemd TAP helper with a narrowly privileged
   Compose helper and other Linux-native approaches;
-- require explicit adapter selection and refuse the host default-route adapter;
+- provide two explicit profiles: an exclusively managed dedicated adapter and
+  an operator-owned existing Linux bridge for a deliberately shared LAN;
+- require explicit adapter selection in the dedicated profile and refuse a
+  default-route adapter or bridge there;
 - make setup reversible and preserve host connectivity on failure;
 - document dedicated USB Ethernet as the recommended topology;
 - expose only the controller services required for operation.
@@ -434,6 +444,8 @@ Tests on Linux x86-64:
 - controller restart, container restart, host reboot, and factory reset;
 - unplug/replug dedicated adapter and recover without corrupting state;
 - safety test refuses an adapter carrying the host default route.
+- existing-bridge preflight confirms a pre-existing Linux bridge and removal
+  deletes only the TAP, leaving the host bridge and connectivity intact.
 
 Exit criteria:
 
@@ -441,6 +453,8 @@ Exit criteria:
   bridges or TAP devices;
 - setup and removal are documented and tested;
 - failure does not strand the host network.
+- an existing-bridge profile is documented as advanced and is not called
+  validated until it has physical-host evidence.
 - no profile is called supported merely because the controller web UI loads.
 
 Current Linux x86-64 bench evidence (2026-08-27):
@@ -492,7 +506,8 @@ Current Linux x86-64 bench evidence (2026-08-27):
 
 ### M5 — Release validation matrix
 
-Status: pending
+Status: complete for the available R600/Linux x86-64 bench; non-R600 model
+coverage remains explicitly unvalidated.
 
 Validate, in order:
 
@@ -522,6 +537,17 @@ Exit criteria:
 
 - every advertised build has a published evidence row;
 - unsupported/unverified AP models are not described as tested.
+
+Completion evidence (2026-08-28): all four advertised exact builds have a
+published row in `README.md` and boot evidence in `VALIDATION.md`. On the
+available R600 bench, 10.1.2.0.318, 10.2.1.0.232, and 10.3.1.0.42 each adopted
+the AP, delivered their signed FSI over legacy FTP, and returned it to `RUN`.
+The 10.3 capture recorded FTP authentication, the R600 control file, an early
+data-stream retry, and a successful 16,714,840-byte transfer with `226 Transfer
+complete` before the AP rebooted into `RUN`. 10.5.1.0.282 separately delivered
+the patched unsigned UI image and completed the mesh-specific validation.
+No R700, H500, R500, T300, or other non-R600 hardware was available; no such
+model is claimed validated.
 
 ### M6 — Linux ARM64 experimental support
 
@@ -646,7 +672,6 @@ Stop and request input only when progress requires:
 - A 10.3.1.0.45 fixture is optional only; it is a Premium-only security
   refresh, while the public 10.3.1.0.42 build is the compatibility target.
 - Confirmation of what 10.2.1.0.232 unsigned-image behavior must be retained.
-- Exact implementation and desired compatibility effect of “enable ECDSA SSH.”
 - Existing method/signatures for support-agreement expiration changes.
 - Which releases require FTP firmware delivery and the required daemon/config,
   ports, and AP-visible addressing.
