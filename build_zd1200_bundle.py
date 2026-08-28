@@ -79,6 +79,7 @@ def make_payload(source_dir: Path, destination: Path, release: ReleaseManifest) 
         f"VERSION={release.version}\n"
         f"BUILD={release.build}\n"
         f"HAS_AIDFS={1 if 'aidfs' in names else 0}\n"
+        f"RUNTIME_FTP_BOOTSTRAP={release.features['runtime_ftp_bootstrap']}\n"
     ).encode("ascii")
     with destination.open("wb") as raw, gzip.GzipFile(
         filename="", fileobj=raw, mode="wb", compresslevel=9, mtime=0

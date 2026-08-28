@@ -182,8 +182,16 @@ ZD_ROOT_CLI
     payload_version="$(/bin/busybox sed -n 's/^VERSION=//p' "$payload/release-info" 2>/dev/null | /bin/busybox head -n 1)"
     payload_build="$(/bin/busybox sed -n 's/^BUILD=//p' "$payload/release-info" 2>/dev/null | /bin/busybox head -n 1)"
     payload_has_aidfs="$(/bin/busybox sed -n 's/^HAS_AIDFS=//p' "$payload/release-info" 2>/dev/null | /bin/busybox head -n 1)"
+    payload_ftp_bootstrap="$(/bin/busybox sed -n 's/^RUNTIME_FTP_BOOTSTRAP=//p' "$payload/release-info" 2>/dev/null | /bin/busybox head -n 1)"
     [ -n "$payload_version" ] || payload_version=unknown
     [ -n "$payload_build" ] || payload_build=unknown
+    case "$payload_ftp_bootstrap" in
+        vendor_state|not_required) ;;
+        *)
+            echo "BOOT-HANDOFF: unsupported runtime FTP profile; payload not trusted" >/dev/console
+            payload_ftp_bootstrap=not_required
+            ;;
+    esac
     # A matching R600 control file carries its image byte counts. Include its
     # digest in the marker so a rebuilt bundle refreshes changed AP payloads.
     r600_control="$(/bin/busybox find "$payload/firmwares/r600" -type f -name '*_cntrl.rcks' 2>/dev/null | /bin/busybox head -n 1)"
@@ -347,11 +355,14 @@ ZD_ECDSA_INIT
     # reset-flag step a no-op before returning the synthetic root read-only.
     /bin/busybox sh -c 'printf "#!/bin/sh\nexit 0\n" > /newroot/etc/init.d/S70resetflag'
     /bin/busybox chmod 755 /newroot/etc/init.d/S70resetflag
-    # ZD 10.2 transfers AP images over FTP. An earlier VM workaround disabled
+    # Exact release manifests select this profile when AP-image FTP needs the
+    # vendor writable account database and first-boot state. An earlier VM
+    # workaround disabled
     # S45vsftpd, causing accepted APs to retry the image download 16 times and
     # fail with update error 176. Restore the small stock startup script every
     # boot because the old no-op was written through S45vsftpd's symlink and
     # therefore replaced the persistent target file itself.
+    if [ "$payload_ftp_bootstrap" = vendor_state ]; then
     /bin/busybox cat > /newroot/etc/init.d/vsftpd <<'ZD_VSFTPD_INIT'
 #!/bin/sh
 conf_file=$2
@@ -397,6 +408,7 @@ ZD_VSFTPD_INIT
     /bin/busybox chmod 755 /newroot/etc/init.d/vsftpd
     /bin/busybox rm -f /newroot/etc/init.d/S45vsftpd
     /bin/busybox ln -s vsftpd /newroot/etc/init.d/S45vsftpd
+    fi
     if [ "$factory_web_patch" -eq 0 ]; then
         # The stock image has no OpenSSH ssh-keygen. Dropbear's key generator
         # is a multicall symlink to /usr/sbin/dropbear. sys_init will generate

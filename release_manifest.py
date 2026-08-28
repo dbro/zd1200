@@ -28,6 +28,7 @@ RELEASE_FIELDS = frozenset(
         "required_paths", "artifact_ids", "features",
     }
 )
+RUNTIME_FTP_BOOTSTRAP_VALUES = frozenset({"vendor_state", "not_required"})
 
 
 @dataclass(frozen=True)
@@ -117,6 +118,12 @@ def load_release_manifest(path: Path = MANIFEST_PATH) -> tuple[ReleaseManifest, 
             isinstance(key, str) and isinstance(value, str) for key, value in features.items()
         ):
             raise ValueError(f"{release_id}: features must be a string map")
+        ftp_bootstrap = features.get("runtime_ftp_bootstrap")
+        if ftp_bootstrap not in RUNTIME_FTP_BOOTSTRAP_VALUES:
+            raise ValueError(
+                f"{release_id}: runtime_ftp_bootstrap must be one of "
+                f"{', '.join(sorted(RUNTIME_FTP_BOOTSTRAP_VALUES))}"
+            )
         if not isinstance(required_paths, list) or not required_paths or not all(
             isinstance(value, str) and value for value in required_paths
         ):

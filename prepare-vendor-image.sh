@@ -94,6 +94,10 @@ fi
     printf 'RELEASE_ID=%s\n' "$release_id"
     awk -F= '$1 == "VERSION" || $1 == "BUILD" { print }' "$metadata"
     printf 'HAS_AIDFS=%s\n' "$has_aidfs"
+    # The legacy preparation path is restricted to a manifest-selected exact
+    # release. Keep its runtime profile explicit rather than inheriting a
+    # 10.5-only assumption; all currently supported releases use this profile.
+    printf 'RUNTIME_FTP_BOOTSTRAP=vendor_state\n'
 } > "$payload_stage/release-info"
 tar -C "$payload_stage" -czf "$output_dir/zd-payload.tar.gz" .
 "$work_dir/make-boot-initrd.sh"

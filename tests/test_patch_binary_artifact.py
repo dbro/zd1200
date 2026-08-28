@@ -167,7 +167,7 @@ class ReleaseManifestTests(unittest.TestCase):
                 "release_id": "test", "product": "zd1200", "version": "1.2.3.4",
                 "build": 5, "support_status": "experimental", "archive_format": "gzip_tar",
                 "metadata": {}, "required_paths": ["metadata"],
-                "artifact_ids": ["missing"], "features": {},
+                "artifact_ids": ["missing"], "features": {"runtime_ftp_bootstrap": "not_required"},
             }],
         }
         with self.assertRaisesRegex(ValueError, "unknown artifact"):
@@ -175,8 +175,14 @@ class ReleaseManifestTests(unittest.TestCase):
 
         document = deepcopy(document)
         document["releases"][0]["artifact_ids"] = []
+        document["releases"][0]["features"] = {"runtime_ftp_bootstrap": "not_required"}
         document["unexpected"] = True
         with self.assertRaisesRegex(ValueError, "root has unknown fields"):
+            load_release_manifest(self.write_manifest(document))
+
+        del document["unexpected"]
+        document["releases"][0]["features"] = {"runtime_ftp_bootstrap": "unrecognized"}
+        with self.assertRaisesRegex(ValueError, "runtime_ftp_bootstrap"):
             load_release_manifest(self.write_manifest(document))
 
 
@@ -340,7 +346,9 @@ class BundleBuilderTests(unittest.TestCase):
             with tarfile.open(archive_path, "r:gz") as archive:
                 info = archive.extractfile("release-info")
                 self.assertIsNotNone(info)
-                self.assertIn(b"HAS_AIDFS=0\n", info.read())
+                contents = info.read()
+                self.assertIn(b"HAS_AIDFS=0\n", contents)
+                self.assertIn(b"RUNTIME_FTP_BOOTSTRAP=vendor_state\n", contents)
                 self.assertNotIn("aidfs", archive.getnames())
 
     def test_kernel_builder_matches_known_patched_fixture(self):
