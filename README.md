@@ -51,7 +51,10 @@ ignored by Git and must never be committed.
   and TAP interface. An existing-host-bridge profile is available for an
   intentionally shared LAN.
 - Host tools for preparation: Bash, Python 3, `tar`, `gzip`, `cpio`,
-  `openssl`, GNU binutils (`as`, `ld`), `md5sum`, and `sha256sum`.
+  `openssl`, GNU binutils (`as`, `ld`), `md5sum`, and `sha256sum`. On an
+  ARM64 Linux host, install `binutils-i686-linux-gnu`; the scripts select it
+  automatically for the x86 guest helper. ARM64 remains experimental because
+  no physical-AP validation host is available.
 
 ## Build the local image
 

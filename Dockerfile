@@ -5,6 +5,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         binutils \
+        binutils-i686-linux-gnu \
         cpio \
         curl \
         e2fsprogs \

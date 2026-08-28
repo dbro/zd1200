@@ -48,12 +48,9 @@ to `127.0.0.1` — a loopback-only adapter.  No Docker is required.
 ## 3. One-time preparation
 
 ```sh
-# aarch64 hosts only: the repo calls bare `as --32` / `ld -m elf_i386`, which
-# the aarch64 binutils reject.  Point at the i686 binutils via PATH:
-mkdir -p /tmp/zd-i686-bin
-ln -sf /usr/bin/i686-linux-gnu-as /tmp/zd-i686-bin/as
-ln -sf /usr/bin/i686-linux-gnu-ld /tmp/zd-i686-bin/ld
-export PATH="/tmp/zd-i686-bin:$PATH"   # only needed for prepare-vendor-image.sh
+# ARM64 Linux hosts: install Debian's cross-binutils once. The scripts detect
+# i686-linux-gnu-as/ld automatically; no PATH symlink workaround is needed.
+sudo apt install binutils-i686-linux-gnu
 
 ./prepare-vendor-image.sh /abs/path/to/zd1200_10.5.1.0.282.ap_10.5.1.0.282.img.tgz
 ```
