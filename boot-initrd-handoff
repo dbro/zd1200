@@ -14,6 +14,7 @@ echo "BOOT-HANDOFF: mounted /dev/hda2"
 enable_ecdsa_ssh=0
 enable_root_cli=0
 support_entitlement_end_epoch=0
+payload_root_ssh=not_supported
 if [ -r /zd-runtime-options ]; then
     option_value=$(/bin/busybox sed -n 's/^ENABLE_ECDSA_SSH=//p' /zd-runtime-options | /bin/busybox head -n 1)
     case "$option_value" in
@@ -183,6 +184,7 @@ ZD_ROOT_CLI
     payload_build="$(/bin/busybox sed -n 's/^BUILD=//p' "$payload/release-info" 2>/dev/null | /bin/busybox head -n 1)"
     payload_has_aidfs="$(/bin/busybox sed -n 's/^HAS_AIDFS=//p' "$payload/release-info" 2>/dev/null | /bin/busybox head -n 1)"
     payload_ftp_bootstrap="$(/bin/busybox sed -n 's/^RUNTIME_FTP_BOOTSTRAP=//p' "$payload/release-info" 2>/dev/null | /bin/busybox head -n 1)"
+    payload_root_ssh="$(/bin/busybox sed -n 's/^RUNTIME_ROOT_SSH=//p' "$payload/release-info" 2>/dev/null | /bin/busybox head -n 1)"
     [ -n "$payload_version" ] || payload_version=unknown
     [ -n "$payload_build" ] || payload_build=unknown
     case "$payload_ftp_bootstrap" in
@@ -190,6 +192,13 @@ ZD_ROOT_CLI
         *)
             echo "BOOT-HANDOFF: unsupported runtime FTP profile; payload not trusted" >/dev/console
             payload_ftp_bootstrap=not_required
+            ;;
+    esac
+    case "$payload_root_ssh" in
+        vendor_dropbear_root_key|not_supported) ;;
+        *)
+            echo "BOOT-HANDOFF: unsupported runtime root SSH profile; key ignored" >/dev/console
+            payload_root_ssh=not_supported
             ;;
     esac
     # A matching R600 control file carries its image byte counts. Include its
@@ -222,6 +231,21 @@ ZD_ROOT_CLI
         else
             echo "BOOT-HANDOFF: ZoneDirector ${payload_version}.${payload_build} payload installation failed" >/dev/console
         fi
+    fi
+    root_ssh_requested=0
+    root_ssh_store=/data/zd1200-root-ssh/authorized_keys
+    if [ -r /zd-root-authorized_keys ]; then
+        if [ "$payload_root_ssh" = vendor_dropbear_root_key ]; then
+            /bin/busybox mkdir -p /data/zd1200-root-ssh
+            /bin/busybox cp -f /zd-root-authorized_keys "$root_ssh_store"
+            /bin/busybox chmod 700 /data/zd1200-root-ssh
+            /bin/busybox chmod 600 "$root_ssh_store"
+            root_ssh_requested=1
+        else
+            echo "BOOT-HANDOFF: root SSH key supplied, but this release does not support it" >/dev/console
+        fi
+    else
+        /bin/busybox rm -f "$root_ssh_store"
     fi
     # The factory wizard's SessionCheck path leaves session["cid"] empty, but
     # its two AJAX modules still reject requests unless a CSRF header matches
@@ -287,6 +311,32 @@ if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
     /bin/busybox chmod 644 /newroot/etc/shells
     # Remove any old diagnostic listener before considering an opt-in payload.
     /bin/busybox rm -f /newroot/etc/init.d/S99zd_dropbear2222
+    # Optional root SSH uses the vendor Dropbear binary, not an unprovenanced
+    # bundled daemon. It is a separate port with password auth disabled, so
+    # the ordinary administrative SSH service and its login wrapper remain
+    # unchanged. The key is stored on the writable partition; remove only the
+    # symlink and data path owned by this project when the option is unset.
+    root_ssh_link=/newroot/root/.ssh/authorized_keys
+    root_ssh_target=/writable/zd1200-root-ssh/authorized_keys
+    /bin/busybox rm -f /newroot/etc/init.d/S61zd_root_ssh
+    if [ "$root_ssh_requested" = 1 ]; then
+        /bin/busybox mkdir -p /newroot/root/.ssh
+        /bin/busybox chmod 700 /newroot/root/.ssh
+        /bin/busybox rm -f "$root_ssh_link"
+        /bin/busybox ln -s "$root_ssh_target" "$root_ssh_link"
+        /bin/busybox cat > /newroot/etc/init.d/S61zd_root_ssh <<'ZD_ROOT_SSH_INIT'
+#!/bin/sh
+key=/root/.ssh/authorized_keys
+hostkey=/etc/airespider/dropbear/dropbear_host_rsa_key
+[ -r "$key" ] && [ -r "$hostkey" ] || exit 0
+exec /usr/sbin/dropbear -p 2222 -P /var/run/zd1200-root-dropbear.pid \
+    -s -j -k -e /bin/sh -r "$hostkey"
+ZD_ROOT_SSH_INIT
+        /bin/busybox chmod 755 /newroot/etc/init.d/S61zd_root_ssh
+        echo "BOOT-HANDOFF: enabled vendor-Dropbear root SSH on TCP 2222" >/dev/console
+    elif [ "$(/bin/busybox readlink "$root_ssh_link" 2>/dev/null)" = "$root_ssh_target" ]; then
+        /bin/busybox rm -f "$root_ssh_link"
+    fi
     # Custom dropbear-2026.94 on port 2222, public-key-only auth.
     if [ -r /zd-dropbear2222/authorized_keys ]; then
     /bin/busybox cat > /newroot/etc/init.d/S99zd_dropbear2222 <<'ZD_DB2222_INIT'

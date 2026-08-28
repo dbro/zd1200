@@ -38,7 +38,7 @@ REPO_FILES = (
     "zd-memory-snapshot.sh",
     "limit-process-cpu.py", "make-runtime-initrd.sh", "make-synthetic-cf.py",
     "patch_binary_artifact.py", "run-zd1200-qemu.sh", "run-zd1200-web.sh",
-    "write-boarddata.py", "zd_identity.py", "zd-controller-wrapper.sh",
+    "write-boarddata.py", "zd_identity.py", "zd_root_ssh.py", "zd-controller-wrapper.sh",
     "zd-healthcheck.sh", "zd-memory-snapshot.sh", "README.md",
     "ZD1200-LAB-GUIDE.md", "VALIDATION.md", "binary_patch_catalog.json",
     "binary_patch_catalog.py", "binary_patch_catalog.schema.json",
@@ -80,6 +80,7 @@ def make_payload(source_dir: Path, destination: Path, release: ReleaseManifest) 
         f"BUILD={release.build}\n"
         f"HAS_AIDFS={1 if 'aidfs' in names else 0}\n"
         f"RUNTIME_FTP_BOOTSTRAP={release.features['runtime_ftp_bootstrap']}\n"
+        f"RUNTIME_ROOT_SSH={release.features['runtime_root_ssh']}\n"
     ).encode("ascii")
     with destination.open("wb") as raw, gzip.GzipFile(
         filename="", fileobj=raw, mode="wb", compresslevel=9, mtime=0

@@ -31,6 +31,7 @@ COPY boot-initrd-handoff \
      run-zd1200-web.sh \
      write-boarddata.py \
      zd_identity.py \
+     zd_root_ssh.py \
      zd-controller-wrapper.sh \
      zd-healthcheck.sh \
      zd-memory-snapshot.sh \

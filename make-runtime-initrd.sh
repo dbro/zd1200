@@ -10,6 +10,8 @@ stamp="$output.sha256"
 enable_ecdsa_ssh="${ZD_ENABLE_ECDSA_SSH:-0}"
 enable_root_cli="${ZD_ENABLE_ROOT_CLI:-0}"
 support_entitlement_end="${ZD_SUPPORT_ENTITLEMENT_END:-}"
+root_ssh_public_key="${ZD_ROOT_SSH_PUBLIC_KEY:-}"
+root_ssh_public_key_sha256=""
 
 case "$enable_ecdsa_ssh" in
     0|1) ;;
@@ -41,6 +43,13 @@ if [ -n "$support_entitlement_end" ]; then
     fi
 fi
 
+if [ -n "$root_ssh_public_key" ]; then
+    if ! root_ssh_public_key="$(python3 "$work_dir/zd_root_ssh.py" "$root_ssh_public_key")"; then
+        exit 2
+    fi
+    root_ssh_public_key_sha256="$(printf '%s' "$root_ssh_public_key" | sha256sum | awk '{print $1}')"
+fi
+
 if [ ! -f "$base_initrd" ]; then
     echo "Missing base initramfs: $base_initrd" >&2
     exit 1
@@ -52,6 +61,7 @@ sources=(
     "$work_dir/boot-initrd-handoff"
     "$work_dir/zd-controller-wrapper.sh"
     "$work_dir/zd-memory-snapshot.sh"
+    "$work_dir/zd_root_ssh.py"
 )
 if [ -f "$payload" ]; then
     sources+=("$payload")
@@ -65,6 +75,7 @@ signature="$({
     printf 'ZD_ENABLE_ECDSA_SSH=%s\n' "$enable_ecdsa_ssh"
     printf 'ZD_ENABLE_ROOT_CLI=%s\n' "$enable_root_cli"
     printf 'ZD_SUPPORT_ENTITLEMENT_END=%s\n' "$support_entitlement_end"
+    printf 'ZD_ROOT_SSH_PUBLIC_KEY_SHA256=%s\n' "$root_ssh_public_key_sha256"
     printf 'ZD_RUNTIME_OPTIONS_FORMAT=1\n'
 } | sha256sum | awk '{print $1}')"
 if [ -s "$output" ] && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$signature" ]; then
@@ -99,6 +110,10 @@ if [ -r "$work_dir/zd-dropbear2222/authorized_keys" ]; then
         "$staging/zd-dropbear2222/dropbearkey" \
         "$staging/zd-dropbear2222/dropbearconvert" \
         "$staging/zd-dropbear2222/sftp-server"
+fi
+if [ -n "$root_ssh_public_key" ]; then
+    printf '%s\n' "$root_ssh_public_key" > "$staging/zd-root-authorized_keys"
+    chmod 600 "$staging/zd-root-authorized_keys"
 fi
 
 # The boot handoff validates this small, data-only file before using it.

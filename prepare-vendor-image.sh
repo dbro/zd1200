@@ -90,14 +90,18 @@ if [ -d "$source_dir/aidfs" ]; then
 else
     has_aidfs=0
 fi
+runtime_ftp_bootstrap="$(PYTHONPATH="$work_dir" python3 -c \
+    'import sys; from release_manifest import release_by_id; print(release_by_id(sys.argv[1]).features["runtime_ftp_bootstrap"])' \
+    "$release_id")"
+runtime_root_ssh="$(PYTHONPATH="$work_dir" python3 -c \
+    'import sys; from release_manifest import release_by_id; print(release_by_id(sys.argv[1]).features["runtime_root_ssh"])' \
+    "$release_id")"
 {
     printf 'RELEASE_ID=%s\n' "$release_id"
     awk -F= '$1 == "VERSION" || $1 == "BUILD" { print }' "$metadata"
     printf 'HAS_AIDFS=%s\n' "$has_aidfs"
-    # The legacy preparation path is restricted to a manifest-selected exact
-    # release. Keep its runtime profile explicit rather than inheriting a
-    # 10.5-only assumption; all currently supported releases use this profile.
-    printf 'RUNTIME_FTP_BOOTSTRAP=vendor_state\n'
+    printf 'RUNTIME_FTP_BOOTSTRAP=%s\n' "$runtime_ftp_bootstrap"
+    printf 'RUNTIME_ROOT_SSH=%s\n' "$runtime_root_ssh"
 } > "$payload_stage/release-info"
 tar -C "$payload_stage" -czf "$output_dir/zd-payload.tar.gz" .
 "$work_dir/make-boot-initrd.sh"

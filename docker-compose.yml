@@ -33,6 +33,9 @@ services:
       ZD_ENABLE_ECDSA_SSH: ${ZD_ENABLE_ECDSA_SSH:-0}
       # Opt-in local diagnostic root CLI; it adds no network listener.
       ZD_ENABLE_ROOT_CLI: ${ZD_ENABLE_ROOT_CLI:-0}
+      # Optional single-line OpenSSH public key; enables root SSH on port 2222
+      # only for release manifests that explicitly support vendor Dropbear.
+      ZD_ROOT_SSH_PUBLIC_KEY: ${ZD_ROOT_SSH_PUBLIC_KEY:-}
       # Optional finite support entitlement end date (YYYY-MM-DD).
       ZD_SUPPORT_ENTITLEMENT_END: ${ZD_SUPPORT_ENTITLEMENT_END:-}
       # Work around the 2.6.32 tickless-idle spin demonstrated in cpu-study.

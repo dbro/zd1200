@@ -295,6 +295,13 @@ authenticated CLI administrator can then enter `enable`, `debug`, `script`, and
 `exec .root.sh` to obtain a local root shell. Disable the setting and restart
 to remove only this project's hook.
 
+For an opt-in root SSH shell on TCP 2222, set `ZD_ROOT_SSH_PUBLIC_KEY` to one
+RSA or ECDSA OpenSSH public-key line before starting the container. This uses
+the vendor Dropbear binary with password authentication disabled and leaves the
+ordinary administrative SSH service untouched. It is currently enabled only
+for the 10.5.1.0.282 manifest; Ed25519 keys are rejected because that vendor
+Dropbear build does not support them.
+
 Set `ZD_SUPPORT_ENTITLEMENT_END=YYYY-MM-DD` to create an enabled, finite support
 entitlement record before the controller starts; the date must be later than
 `2010-01-01`. Leave it unset to preserve the vendor support-entitlement state.

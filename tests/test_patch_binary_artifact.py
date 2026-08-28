@@ -28,6 +28,7 @@ from patch_binary_artifact import (
 )
 from ruckus_bl7 import parse_bl7
 from zd_identity import IDENTITY_FILE, parse_identity, resolve_identity
+from zd_root_ssh import validate_public_key
 from check_repository_hygiene import violations as repository_hygiene_violations
 
 
@@ -168,7 +169,10 @@ class ReleaseManifestTests(unittest.TestCase):
                 "release_id": "test", "product": "zd1200", "version": "1.2.3.4",
                 "build": 5, "support_status": "experimental", "archive_format": "gzip_tar",
                 "metadata": {}, "required_paths": ["metadata"],
-                "artifact_ids": ["missing"], "features": {"runtime_ftp_bootstrap": "not_required"},
+                "artifact_ids": ["missing"], "features": {
+                    "runtime_ftp_bootstrap": "not_required",
+                    "runtime_root_ssh": "not_supported",
+                },
             }],
         }
         with self.assertRaisesRegex(ValueError, "unknown artifact"):
@@ -176,14 +180,27 @@ class ReleaseManifestTests(unittest.TestCase):
 
         document = deepcopy(document)
         document["releases"][0]["artifact_ids"] = []
-        document["releases"][0]["features"] = {"runtime_ftp_bootstrap": "not_required"}
+        document["releases"][0]["features"] = {
+            "runtime_ftp_bootstrap": "not_required",
+            "runtime_root_ssh": "not_supported",
+        }
         document["unexpected"] = True
         with self.assertRaisesRegex(ValueError, "root has unknown fields"):
             load_release_manifest(self.write_manifest(document))
 
         del document["unexpected"]
-        document["releases"][0]["features"] = {"runtime_ftp_bootstrap": "unrecognized"}
+        document["releases"][0]["features"] = {
+            "runtime_ftp_bootstrap": "unrecognized",
+            "runtime_root_ssh": "not_supported",
+        }
         with self.assertRaisesRegex(ValueError, "runtime_ftp_bootstrap"):
+            load_release_manifest(self.write_manifest(document))
+
+        document["releases"][0]["features"] = {
+            "runtime_ftp_bootstrap": "not_required",
+            "runtime_root_ssh": "unrecognized",
+        }
+        with self.assertRaisesRegex(ValueError, "runtime_root_ssh"):
             load_release_manifest(self.write_manifest(document))
 
 
@@ -319,6 +336,26 @@ class RepositoryHygieneTests(unittest.TestCase):
         self.assertEqual(repository_hygiene_violations(), [])
 
 
+class RootSshKeyTests(unittest.TestCase):
+    def test_accepts_one_valid_open_ssh_line_and_preserves_comment(self):
+        algorithm = b"ssh-rsa"
+        blob = struct.pack(">I", len(algorithm)) + algorithm + b"\x00" * 32
+        import base64
+        key = f"ssh-rsa {base64.b64encode(blob).decode('ascii')} test key"
+        self.assertEqual(validate_public_key(key), key)
+
+    def test_rejects_multiline_mismatched_and_unsupported_keys(self):
+        with self.assertRaisesRegex(ValueError, "one non-empty"):
+            validate_public_key("ssh-rsa AAAA\nssh-rsa BBBB")
+        with self.assertRaisesRegex(ValueError, "supported"):
+            validate_public_key("ssh-dss AAAA")
+        import base64
+        other = b"ecdsa-sha2-nistp256"
+        mismatch = base64.b64encode(struct.pack(">I", len(other)) + other + b"\x00" * 32).decode("ascii")
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            validate_public_key(f"ssh-rsa {mismatch}")
+
+
 class BundleBuilderTests(unittest.TestCase):
     def test_payload_tar_is_reproducible(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -355,6 +392,7 @@ class BundleBuilderTests(unittest.TestCase):
                 contents = info.read()
                 self.assertIn(b"HAS_AIDFS=0\n", contents)
                 self.assertIn(b"RUNTIME_FTP_BOOTSTRAP=vendor_state\n", contents)
+                self.assertIn(b"RUNTIME_ROOT_SSH=not_supported\n", contents)
                 self.assertNotIn("aidfs", archive.getnames())
 
     def test_kernel_builder_matches_known_patched_fixture(self):

@@ -32,7 +32,8 @@
         "archive_aidfs_layout": "rootfs_only",
         "ftp_ap_delivery": "verified_legacy_ftp_r600",
         "r600_mesh_receive_repair": "not_required_before_10_5_1_0_276",
-        "runtime_ftp_bootstrap": "vendor_state"
+        "runtime_ftp_bootstrap": "vendor_state",
+        "runtime_root_ssh": "not_supported"
       }
     },
     {
@@ -66,7 +67,8 @@
       "features": {
         "ftp_ap_delivery": "verified_legacy_ftp_r600",
         "r600_mesh_receive_repair": "not_required_before_10_5_1_0_276",
-        "runtime_ftp_bootstrap": "vendor_state"
+        "runtime_ftp_bootstrap": "vendor_state",
+        "runtime_root_ssh": "not_supported"
       }
     },
     {
@@ -101,6 +103,7 @@
         "ftp_ap_delivery": "verified_legacy_ftp_r600",
         "r600_mesh_receive_repair": "not_required_before_10_5_1_0_276",
         "runtime_ftp_bootstrap": "vendor_state",
+        "runtime_root_ssh": "not_supported",
         "fixture_note": "10_3_1_0_42_is_not_the_final_10_3_1_refresh"
       }
     },
@@ -135,7 +138,8 @@
       "features": {
         "ftp_ap_delivery": "verified_legacy_ftp_r600",
         "r600_mesh_receive_repair": "available_when_ap_payload_is_repacked",
-        "runtime_ftp_bootstrap": "vendor_state"
+        "runtime_ftp_bootstrap": "vendor_state",
+        "runtime_root_ssh": "vendor_dropbear_root_key"
       }
     }
   ]

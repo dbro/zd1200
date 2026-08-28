@@ -29,6 +29,7 @@ RELEASE_FIELDS = frozenset(
     }
 )
 RUNTIME_FTP_BOOTSTRAP_VALUES = frozenset({"vendor_state", "not_required"})
+RUNTIME_ROOT_SSH_VALUES = frozenset({"not_supported", "vendor_dropbear_root_key"})
 
 
 @dataclass(frozen=True)
@@ -123,6 +124,12 @@ def load_release_manifest(path: Path = MANIFEST_PATH) -> tuple[ReleaseManifest, 
             raise ValueError(
                 f"{release_id}: runtime_ftp_bootstrap must be one of "
                 f"{', '.join(sorted(RUNTIME_FTP_BOOTSTRAP_VALUES))}"
+            )
+        root_ssh = features.get("runtime_root_ssh")
+        if root_ssh not in RUNTIME_ROOT_SSH_VALUES:
+            raise ValueError(
+                f"{release_id}: runtime_root_ssh must be one of "
+                f"{', '.join(sorted(RUNTIME_ROOT_SSH_VALUES))}"
             )
         if not isinstance(required_paths, list) or not required_paths or not all(
             isinstance(value, str) and value for value in required_paths
