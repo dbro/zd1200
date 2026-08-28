@@ -77,6 +77,17 @@ if /bin/busybox mount -t ext2 -o rw /dev/hda4 /data 2>/dev/null; then
         /bin/busybox sh -c 'printf "root:x:0:\nadmin:x:0:\nnobody:x:65534:\n" > /data/etc/config/group'
         /bin/busybox touch /data/.zd-lab-initialized
     fi
+    # The web server and legacy AP FTP daemon use different historical names
+    # for the controller certificate. Preserve existing generated credentials,
+    # but repair missing aliases on every boot for already-initialized volumes.
+    cert_dir=/data/etc/airespider/certs
+    /bin/busybox mkdir -p "$cert_dir"
+    [ -s "$cert_dir/webaccert.pem" ] || /bin/busybox cp -f /lab-certs/webaccert.pem "$cert_dir/webaccert.pem" 2>/dev/null || true
+    [ -s "$cert_dir/webackey.pem" ] || /bin/busybox cp -f /lab-certs/webackey.pem "$cert_dir/webackey.pem" 2>/dev/null || true
+    [ -s "$cert_dir/cacert.pem" ] || /bin/busybox cp -f /lab-certs/webaccert.pem "$cert_dir/cacert.pem" 2>/dev/null || true
+    [ -s "$cert_dir/accert.pem" ] || /bin/busybox cp -f /lab-certs/webaccert.pem "$cert_dir/accert.pem" 2>/dev/null || true
+    [ -s "$cert_dir/ackey.pem" ] || /bin/busybox cp -f /lab-certs/webackey.pem "$cert_dir/ackey.pem" 2>/dev/null || true
+    /bin/busybox chmod 600 "$cert_dir/ackey.pem" "$cert_dir/webackey.pem" 2>/dev/null || true
     # Custom dropbear-2026.94 (pubkey-only, port 2222) is deliberately
     # opt-in.  It is injected only when the runtime initramfs contains an
     # operator-supplied authorized_keys file; no default key is shipped.
@@ -241,11 +252,32 @@ ZD_DB2222_INIT
     /bin/busybox cat > /newroot/etc/init.d/vsftpd <<'ZD_VSFTPD_INIT'
 #!/bin/sh
 conf_file=$2
+ftp_state=/tmp/vsftpd_info
+
+# The vendor FTP monitor restarts the daemon according to this transient state
+# file.  On a physical controller, controller configuration creates it before
+# the monitor's first pass.  A clean VM can reach S45 before that happens;
+# without the file the monitor concludes FTP is disabled and stops the daemon.
+# Seed the exact state from the active vendor setting, not a lab-only policy.
+if [ ! -r "$ftp_state" ]; then
+    system_xml=/etc/airespider/system.xml
+    [ -r "$system_xml" ] || system_xml=/etc/airespider-default/system.xml
+    if grep -q '<ftp enabled="true" anonymous="false"' "$system_xml" 2>/dev/null; then
+        printf 'enabled=1\nconfig=/etc/vsftpd2.conf\n' > "$ftp_state"
+    elif grep -q '<ftp enabled="true" anonymous="true"' "$system_xml" 2>/dev/null; then
+        printf 'enabled=1\nconfig=/etc/vsftpd.conf\n' > "$ftp_state"
+    else
+        printf 'enabled=0\nconfig=\n' > "$ftp_state"
+    fi
+fi
 case "$1" in
     start)
-        if [ -x /usr/sbin/vsftpd ]; then
+        enabled=$(sed -n 's/^enabled=//p' "$ftp_state" | head -n 1)
+        state_config=$(sed -n 's/^config=//p' "$ftp_state" | head -n 1)
+        [ -n "$conf_file" ] || conf_file=$state_config
+        if [ "$enabled" = "1" ] && [ -x /usr/sbin/vsftpd ]; then
             echo "Starting vsftpd ..."
-            /usr/sbin/vsftpd ${conf_file}
+            /usr/sbin/vsftpd "$conf_file"
             killall ftpdMon.sh 2>/dev/null || true
             /bin/ftpdMon.sh &
         fi
