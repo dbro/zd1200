@@ -1,14 +1,49 @@
 #!/usr/bin/env bash
-# Create an unnumbered USB-Ethernet -> bridge -> TAP path for the VM.
+# Create a Layer-2 bridge -> TAP path for the VM without taking over host LAN.
 set -euo pipefail
 
-usb_if="${ZD_USB_IF:?Set ZD_USB_IF in /etc/default/zd1200-bridge}"
+profile="${ZD_NETWORK_PROFILE:-dedicated}"
+usb_if="${ZD_USB_IF:-}"
 expected_mac="${ZD_USB_MAC:-}"
 bridge_if="${ZD_BRIDGE_IF:-br-zd}"
 tap_if="${ZD_TAP_IF:-tap-zd}"
 
 fail() { echo "zd1200-bridge: $*" >&2; exit 1; }
 (( EUID == 0 )) || fail "must run as root"
+
+validate_profile() {
+    case "$profile" in
+        dedicated)
+            [ -n "$usb_if" ] || fail "ZD_USB_IF is required for ZD_NETWORK_PROFILE=dedicated"
+            validate_dedicated_adapter
+            ;;
+        existing-bridge)
+            [ -d "/sys/class/net/$bridge_if/bridge" ] ||
+                fail "ZD_BRIDGE_IF=$bridge_if must name an existing Linux bridge"
+            ip -o link show dev "$bridge_if" | grep -q '<[^>]*UP[^>]*>' ||
+                fail "ZD_BRIDGE_IF=$bridge_if must already be administratively up"
+            ;;
+        *)
+            fail "ZD_NETWORK_PROFILE must be dedicated or existing-bridge"
+            ;;
+    esac
+}
+
+validate_dedicated_adapter() {
+    [ -e "/sys/class/net/$usb_if" ] || fail "missing dedicated interface $usb_if"
+    if [ -n "$expected_mac" ]; then
+        actual_mac="$(tr '[:upper:]' '[:lower:]' < "/sys/class/net/$usb_if/address")"
+        [ "$actual_mac" = "${expected_mac,,}" ] ||
+            fail "$usb_if has MAC $actual_mac, expected $expected_mac"
+    fi
+    if ip route show default | grep -qE "(^| )dev ${usb_if}( |$)"; then
+        fail "refusing to repurpose default-route interface $usb_if"
+    fi
+    if [ -e "/sys/class/net/$bridge_if" ] &&
+        ip route show default | grep -qE "(^| )dev ${bridge_if}( |$)"; then
+        fail "refusing dedicated profile: $bridge_if carries the host default route"
+    fi
+}
 
 disable_ip() {
     local interface="$1"
@@ -26,15 +61,7 @@ attach_usb() {
     # The udev-triggered unit is intentionally generic for USB NICs. Ignore
     # every device except the explicitly configured dedicated adapter.
     [ "$interface" = "$usb_if" ] || return 0
-    [ -e "/sys/class/net/$interface" ] || fail "missing USB interface $interface"
-    if [ -n "$expected_mac" ]; then
-        actual_mac="$(tr '[:upper:]' '[:lower:]' < "/sys/class/net/$interface/address")"
-        [ "$actual_mac" = "${expected_mac,,}" ] ||
-            fail "$interface has MAC $actual_mac, expected $expected_mac"
-    fi
-    if ip route show default | grep -qE "(^| )dev ${interface}( |$)"; then
-        fail "refusing to repurpose default-route interface $interface"
-    fi
+    validate_dedicated_adapter
 
     disable_ip "$interface"
     ip link set dev "$interface" down
@@ -49,6 +76,11 @@ usb_is_attached() {
 }
 
 watch_bridge() {
+    if [ "$profile" = "existing-bridge" ]; then
+        # There is no physical interface to reattach.  Keep the companion
+        # service alive without ever changing the operator-owned bridge.
+        while true; do sleep 3600; done
+    fi
     local interval="${ZD_USB_WATCH_INTERVAL:-2}"
     [[ "$interval" =~ ^[1-9][0-9]*$ ]] || fail "ZD_USB_WATCH_INTERVAL must be a positive integer"
     while true; do
@@ -66,31 +98,44 @@ watch_bridge() {
 }
 
 start_bridge() {
+    validate_profile
 
-    if [ ! -e "/sys/class/net/$bridge_if" ]; then
-        ip link add name "$bridge_if" type bridge
+    if [ "$profile" = "dedicated" ]; then
+        if [ ! -e "/sys/class/net/$bridge_if" ]; then
+            ip link add name "$bridge_if" type bridge
+        fi
+        [ -d "/sys/class/net/$bridge_if/bridge" ] ||
+            fail "$bridge_if exists but is not a bridge"
+        ip link set dev "$bridge_if" type bridge stp_state 0 forward_delay 0
+        disable_ip "$bridge_if"
     fi
-    [ -d "/sys/class/net/$bridge_if/bridge" ] ||
-        fail "$bridge_if exists but is not a bridge"
-    ip link set dev "$bridge_if" type bridge stp_state 0 forward_delay 0
-    disable_ip "$bridge_if"
 
     if [ ! -e "/sys/class/net/$tap_if" ]; then
         ip tuntap add dev "$tap_if" mode tap user root
     fi
     ip tuntap show dev "$tap_if" 2>/dev/null | grep -q "^${tap_if}:.*tap" ||
         fail "$tap_if exists but is not a TAP interface"
+    if [ -e "/sys/class/net/$tap_if/master" ] &&
+        [ "$(basename "$(readlink -f "/sys/class/net/$tap_if/master")")" != "$bridge_if" ]; then
+        fail "$tap_if is already attached to another bridge"
+    fi
     disable_ip "$tap_if"
     ip link set dev "$tap_if" master "$bridge_if"
 
-    ip link set dev "$bridge_if" up
+    if [ "$profile" = "dedicated" ]; then
+        ip link set dev "$bridge_if" up
+    fi
     ip link set dev "$tap_if" up
-    attach_usb "$usb_if"
-    echo "ZD1200 layer-2 path ready: $usb_if -> $bridge_if -> $tap_if"
+    if [ "$profile" = "dedicated" ]; then
+        attach_usb "$usb_if"
+        echo "ZD1200 dedicated layer-2 path ready: $usb_if -> $bridge_if -> $tap_if"
+    else
+        echo "ZD1200 existing-bridge path ready: $bridge_if -> $tap_if (host bridge unchanged)"
+    fi
 }
 
 stop_bridge() {
-    if [ -e "/sys/class/net/$usb_if" ]; then
+    if [ "$profile" = "dedicated" ] && [ -n "$usb_if" ] && [ -e "/sys/class/net/$usb_if" ]; then
         ip link set dev "$usb_if" down || true
         ip link set dev "$usb_if" nomaster || true
         ip link set dev "$usb_if" promisc off || true
@@ -101,7 +146,7 @@ stop_bridge() {
         ip link set dev "$tap_if" nomaster || true
         ip tuntap del dev "$tap_if" mode tap || true
     fi
-    if [ -e "/sys/class/net/$bridge_if" ]; then
+    if [ "$profile" = "dedicated" ] && [ -e "/sys/class/net/$bridge_if" ]; then
         ip link set dev "$bridge_if" down || true
         ip link del dev "$bridge_if" type bridge || true
     fi
@@ -109,9 +154,14 @@ stop_bridge() {
 
 case "${1:-}" in
     start) start_bridge ;;
-    attach) attach_usb "${2:-}" ;;
+    check) validate_profile; echo "ZD1200 network profile is safe to start: $profile" ;;
+    attach)
+        [ "$profile" = "dedicated" ] ||
+            fail "attach is only valid for ZD_NETWORK_PROFILE=dedicated"
+        attach_usb "${2:-}"
+        ;;
     watch) watch_bridge ;;
     stop) stop_bridge ;;
     restart) stop_bridge; start_bridge ;;
-    *) fail "usage: $0 {start|attach <ifname>|watch|stop|restart}" ;;
+    *) fail "usage: $0 {start|check|attach <ifname>|watch|stop|restart}" ;;
 esac

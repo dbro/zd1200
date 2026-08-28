@@ -1,5 +1,5 @@
 [Unit]
-Description=Layer-2 USB bridge for the virtual ZoneDirector 1200
+Description=Layer-2 bridge/TAP path for the virtual ZoneDirector 1200
 Wants=network-pre.target
 After=systemd-udev-settle.service
 Before=docker.service
