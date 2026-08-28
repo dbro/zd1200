@@ -16,7 +16,12 @@ from build_zd1200_bundle import (
     scorpion_payload_paths,
     update_scorpion_control_files,
 )
-from release_manifest import RELEASES, ReleaseManifest, load_release_manifest
+from release_manifest import (
+    RELEASES,
+    ReleaseManifest,
+    load_release_manifest,
+    release_by_input_sha256,
+)
 from ruckus_tac_decrypt import decrypt_bytes, decrypt_file
 from verify_release_archive import sha256_file, verify_decrypted_archive, verify_encrypted_input
 from patch_binary_artifact import (
@@ -77,6 +82,7 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(len({rule.name for rule in PATCHES}), len(PATCHES))
         self.assertTrue(all(rule.artifact_id in ARTIFACTS for rule in PATCHES))
 
+
     def test_catalog_rejects_unknown_artifact_reference(self):
         invalid = {
             "catalog_version": 1,
@@ -136,6 +142,19 @@ class CatalogTests(unittest.TestCase):
         del invalid["accidentally_ignored"]
         with self.assertRaisesRegex(ValueError, "length differs"):
             load_catalog(self.write_catalog(invalid))
+
+
+class ReleaseSelectionTests(unittest.TestCase):
+    def test_input_digest_selects_the_matching_exact_release(self):
+        expected = next(release for release in RELEASES if release.release_id == "zd1200_10_3_1_0_42")
+        self.assertEqual(
+            release_by_input_sha256(expected.encrypted_sha256 or "").release_id,
+            expected.release_id,
+        )
+
+    def test_unknown_input_digest_fails_closed(self):
+        with self.assertRaisesRegex(ValueError, "not an exact supported"):
+            release_by_input_sha256("0" * 64)
 
 
 class ReleaseManifestTests(unittest.TestCase):

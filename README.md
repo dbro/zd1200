@@ -117,7 +117,8 @@ python3 build_zd1200_bundle.py \
   /path/to/zd1200-10.5.1.0.282-bundle.zip
 ```
 
-Pass the exact manifest ID for an older build, for example:
+The input hash selects its exact manifest automatically. You may pass the
+exact manifest ID only to assert the release you expect, for example:
 
 ```sh
 python3 build_zd1200_bundle.py \
@@ -315,9 +316,9 @@ than checking that QEMU exists: a guest which has shut down or is stuck during
 a reboot becomes unhealthy. The physical-LAN TAP bridge remains unnumbered;
 the check uses a guest-generated serial readiness marker rather than assigning
 an otherwise unnecessary management address to the Docker host.
-The separate diagnostic root-SSH development hook is not included in source
-bundles. It must remain disabled unless a future reproducible, licensed
-implementation and an operator-provided public key are available.
+No third-party diagnostic SSH payload is included in source bundles. The only
+supported opt-in root SSH path is the vendor-Dropbear key option described
+above; it requires an operator-provided public key.
 
 ## Runtime notes
 

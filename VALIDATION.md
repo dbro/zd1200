@@ -86,7 +86,7 @@ RSA and ECDSA host keys, and that a legacy RSA-only client still connects. Set
 the option back to `0`, restart once more, and verify that the ECDSA key is no
 longer advertised. This setting does not create a root-login path.
 
-### Optional root CLI and support entitlement
+### Optional root CLI, root SSH, and support entitlement
 
 With both `ZD_ENABLE_ROOT_CLI=0` and `ZD_SUPPORT_ENTITLEMENT_END` unset, verify
 that `.root.sh` is unavailable from `debug` → `script` and that the controller's
@@ -101,6 +101,22 @@ and confirm the support-entitlement warning is absent in the web UI after the
 controller reaches `RUN`. Verify the generated record uses the controller's
 actual serial and finite UTC end date, then test a malformed and a
 `2010-01-01` value: both must fail before QEMU starts.
+
+The root-SSH option is supported only by the `10.5.1.0.282` runtime profile.
+With `ZD_ROOT_SSH_PUBLIC_KEY` unset, verify that TCP 2222 is closed and that
+the normal administrative SSH listener is unchanged. Supply one disposable RSA
+or ECDSA public key in `.env`, recreate the container, and then test from the
+management station:
+
+```sh
+ssh -p 2222 -i /path/to/disposable_private_key root@<controller-ip> id
+```
+
+The result must identify UID 0; a password-only attempt and a connection to
+port 22 as `root` must fail. Remove the variable, recreate once more, and
+verify TCP 2222 is closed. The option must refuse an older release, an
+Ed25519 key, a malformed key, or an existing non-project-owned
+`/root/.ssh/authorized_keys` instead of replacing it.
 
 ## One-time AP firmware prerequisite (ap-11n-scorpion models)
 

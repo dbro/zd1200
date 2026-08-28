@@ -66,9 +66,6 @@ sources=(
 if [ -f "$payload" ]; then
     sources+=("$payload")
 fi
-if [ -r "$work_dir/zd-dropbear2222/authorized_keys" ]; then
-    sources+=("$work_dir"/zd-dropbear2222/*)
-fi
 
 signature="$({
     sha256sum "${sources[@]}"
@@ -102,14 +99,6 @@ if [ -f "$payload" ]; then
     # effective UID 0 and tries to restore the archive's uid/gid 1000, turning
     # an otherwise successful extraction into a fatal error.
     tar --no-same-owner -xzf "$payload" -C "$staging/zd-payload"
-fi
-if [ -r "$work_dir/zd-dropbear2222/authorized_keys" ]; then
-    mkdir -p "$staging/zd-dropbear2222"
-    cp -a "$work_dir/zd-dropbear2222/." "$staging/zd-dropbear2222/"
-    chmod 755 "$staging/zd-dropbear2222/dropbear" \
-        "$staging/zd-dropbear2222/dropbearkey" \
-        "$staging/zd-dropbear2222/dropbearconvert" \
-        "$staging/zd-dropbear2222/sftp-server"
 fi
 if [ -n "$root_ssh_public_key" ]; then
     printf '%s\n' "$root_ssh_public_key" > "$staging/zd-root-authorized_keys"

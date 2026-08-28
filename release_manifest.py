@@ -164,3 +164,29 @@ def release_by_id(
         if release.release_id == release_id:
             return release
     raise ValueError(f"unknown release_id {release_id!r}")
+
+
+def release_by_input_sha256(
+    digest: str, releases: tuple[ReleaseManifest, ...] = RELEASES
+) -> ReleaseManifest:
+    """Select an exact release from either recorded source-archive digest.
+
+    The encrypted TAC download has intentionally little trustworthy metadata,
+    and filenames are user-controlled.  Selection therefore happens from the
+    full input digest before decryption or extraction.
+    """
+    matches = [
+        release for release in releases
+        if digest in {release.encrypted_sha256, release.decrypted_sha256}
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
+        raise ValueError(
+            "input SHA-256 is not an exact supported ZoneDirector archive: "
+            f"{digest}"
+        )
+    raise ValueError(
+        "input SHA-256 is ambiguously recorded for: "
+        + ", ".join(release.release_id for release in matches)
+    )

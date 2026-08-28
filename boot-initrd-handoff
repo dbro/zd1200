@@ -322,8 +322,18 @@ if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
     if [ "$root_ssh_requested" = 1 ]; then
         /bin/busybox mkdir -p /newroot/root/.ssh
         /bin/busybox chmod 700 /newroot/root/.ssh
-        /bin/busybox rm -f "$root_ssh_link"
-        /bin/busybox ln -s "$root_ssh_target" "$root_ssh_link"
+        if [ -e "$root_ssh_link" ] || [ -L "$root_ssh_link" ]; then
+            if [ "$(/bin/busybox readlink "$root_ssh_link" 2>/dev/null)" != "$root_ssh_target" ]; then
+                # Do not turn an operator-managed root key into a project
+                # listener. This option owns only its explicit symlink.
+                echo "BOOT-HANDOFF: existing root authorized_keys is not project-owned; root SSH left disabled" >/dev/console
+                root_ssh_requested=0
+            fi
+        else
+            /bin/busybox ln -s "$root_ssh_target" "$root_ssh_link"
+        fi
+    fi
+    if [ "$root_ssh_requested" = 1 ]; then
         /bin/busybox cat > /newroot/etc/init.d/S61zd_root_ssh <<'ZD_ROOT_SSH_INIT'
 #!/bin/sh
 key=/root/.ssh/authorized_keys
@@ -336,29 +346,6 @@ ZD_ROOT_SSH_INIT
         echo "BOOT-HANDOFF: enabled vendor-Dropbear root SSH on TCP 2222" >/dev/console
     elif [ "$(/bin/busybox readlink "$root_ssh_link" 2>/dev/null)" = "$root_ssh_target" ]; then
         /bin/busybox rm -f "$root_ssh_link"
-    fi
-    # Custom dropbear-2026.94 on port 2222, public-key-only auth.
-    if [ -r /zd-dropbear2222/authorized_keys ]; then
-    /bin/busybox cat > /newroot/etc/init.d/S99zd_dropbear2222 <<'ZD_DB2222_INIT'
-#!/bin/sh
-# dropbear 2026.94 (custom ZD1200 build): port 2222, pubkey-only.
-D=/writable/dropbear2222
-echo "S99zd_dropbear2222: dir=$D"
-/bin/busybox ls -la "$D" 2>&1
-[ -x "$D/dropbear" ] || { echo "S99zd_dropbear2222: dropbear missing"; exit 0; }
-"$D/dropbear" -V 2>&1
-[ -f "$D/hostkey_ed25519" ] || "$D/dropbearkey" -t ed25519 -f "$D/hostkey_ed25519" 2>&1
-[ -f "$D/hostkey_rsa" ] || "$D/dropbearkey" -t rsa -s 2048 -f "$D/hostkey_rsa" 2>&1
-echo "S99zd_dropbear2222: starting dropbear on 2222 (pubkey-only)"
-"$D/dropbear" -p 2222 -s -D "$D" -r "$D/hostkey_ed25519" -r "$D/hostkey_rsa" -F -E 2>&1 &
-sleep 3
-echo "S99zd_dropbear2222: /etc/passwd:"
-cat /etc/passwd 2>&1
-echo "S99zd_dropbear2222: id root:"
-id root 2>&1 || echo "id root: FAILED"
-exit 0
-ZD_DB2222_INIT
-    /bin/busybox chmod 755 /newroot/etc/init.d/S99zd_dropbear2222
     fi
     # Preserve the vendor Dropbear launcher and make the ECDSA compatibility
     # choice reversible.  Dropbear accepts multiple -r host-key arguments, so

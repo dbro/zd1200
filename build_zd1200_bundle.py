@@ -18,6 +18,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import zipfile
@@ -26,7 +27,7 @@ from pathlib import Path
 from patch_binary_artifact import apply_rules, extract_artifact, rebuild_artifact, rules_for_artifact
 from patch_r600_bl7 import patch_image as patch_r600_image
 from ruckus_bl7 import parse_bl7
-from release_manifest import RELEASES, ReleaseManifest, release_by_id
+from release_manifest import RELEASES, ReleaseManifest, release_by_id, release_by_input_sha256
 from ruckus_tac_decrypt import decrypt_file
 from verify_release_archive import verify_decrypted_archive, verify_encrypted_input
 
@@ -115,7 +116,13 @@ def copy_tree_safe(source: Path, destination: Path) -> None:
 
 def make_boot_initrd(bundle: Path) -> None:
     """Build the derived boot initramfs expected by run-zd1200-web.sh."""
-    subprocess.run(["bash", "make-boot-initrd.sh"], cwd=bundle, check=True)
+    # Keep this command's stdout reserved for the machine-readable final build
+    # report. Toolchain warnings/progress remain visible to an interactive
+    # operator on stderr.
+    subprocess.run(
+        ["bash", "make-boot-initrd.sh"], cwd=bundle, check=True,
+        stdout=sys.stderr, stderr=sys.stderr,
+    )
 
 
 def patch_kernel(source: Path, destination: Path, vmlinux: Path | None = None) -> list[str]:
@@ -373,7 +380,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", type=Path, help="encrypted or decrypted ZD1200 archive")
     parser.add_argument("output", type=Path, help="generated bundle ZIP")
-    parser.add_argument("--release", default="zd1200_10_5_1_0_282")
+    parser.add_argument(
+        "--release",
+        help="exact release id; normally omitted so the input SHA-256 selects it",
+    )
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parent)
     parser.add_argument("--unsquashfs", type=Path, help="Ruckus-compatible unsquashfs for R600 payload patching")
     parser.add_argument("--mksquashfs", type=Path, help="Ruckus-compatible mksquashfs for R600 payload patching")
@@ -382,10 +392,15 @@ def main() -> None:
     if not args.input.is_file():
         parser.error(f"input not found: {args.input}")
     try:
+        release = (
+            release_by_id(args.release, RELEASES)
+            if args.release
+            else release_by_input_sha256(sha256_file(args.input), RELEASES)
+        )
         report = build_bundle(
             args.input,
             args.output,
-            release=release_by_id(args.release, RELEASES),
+            release=release,
             repo_root=args.repo_root,
             unsquashfs=args.unsquashfs,
         mksquashfs=args.mksquashfs,
