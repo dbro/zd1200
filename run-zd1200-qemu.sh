@@ -73,7 +73,7 @@ case "${NETWORK_MODE:-user}" in
 esac
 
 if [ "${NETWORK_MODE:-user}" != none ]; then
-    nic_args=( -net nic,model=e1000e,macaddr=52:54:00:12:00:01 )
+    nic_args=( -net nic,model=e1000e,macaddr="${QEMU_NIC_MAC:-02:52:54:12:00:01}" )
 fi
 
 snapshot_args=()
@@ -125,6 +125,5 @@ exec qemu-system-i386 \
     "${net_args[@]}" \
     "${nic_args[@]}" \
     -nographic \
-    -no-reboot \
     "${pacing_args[@]}" \
     "${debug_args[@]}"

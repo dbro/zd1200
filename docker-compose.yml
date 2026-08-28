@@ -25,9 +25,10 @@ services:
       # Optional informational address (and required only if WEB_PROBE=on).
       # It does not configure the guest; use the ZD wizard for that.
       GUEST_IP: ${ZD_GUEST_IP:-}
-      # Board data written into the CF image: serial + base MAC (MAC2=MAC1+1).
-      ZD_SERIAL: ${ZD_SERIAL:-123456000789}
-      ZD_MAC1: ${ZD_MAC1:-02:52:54:12:00:01}
+      # Optional board identity override. Set both values, or leave both empty
+      # to generate and retain a unique locally administered identity.
+      ZD_SERIAL: ${ZD_SERIAL:-}
+      ZD_MAC1: ${ZD_MAC1:-}
       # Keep RSA; optionally advertise an additional ECDSA host key.
       ZD_ENABLE_ECDSA_SSH: ${ZD_ENABLE_ECDSA_SSH:-0}
       # Opt-in local diagnostic root CLI; it adds no network listener.
@@ -54,7 +55,7 @@ services:
     stop_grace_period: 20s
 
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f '[q]emu-system-i386' >/dev/null"]
+      test: ["CMD", "/opt/zd1200/zd-healthcheck.sh"]
       interval: 30s
       timeout: 8s
       start_period: 10m

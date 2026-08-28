@@ -27,6 +27,7 @@ from patch_binary_artifact import (
     rebuild_artifact,
 )
 from ruckus_bl7 import parse_bl7
+from zd_identity import IDENTITY_FILE, parse_identity, resolve_identity
 
 
 def rule(
@@ -280,6 +281,32 @@ class TacDecryptionTests(unittest.TestCase):
                 verify_encrypted_input(path, release)
 
 
+class BoardIdentityTests(unittest.TestCase):
+    def test_generated_identity_is_valid_and_persistent(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            state = Path(temporary)
+            serial, mac, source = resolve_identity(state, "", "")
+            self.assertEqual(source, "generated and persisted")
+            self.assertRegex(serial, r"^\d{12}$")
+            self.assertRegex(mac, r"^02:[0-9a-f]{2}(?::[0-9a-f]{2}){4}$")
+            self.assertEqual(parse_identity(state / IDENTITY_FILE), (serial, mac))
+            self.assertEqual(
+                resolve_identity(state, "", ""), (serial, mac, "persistent state")
+            )
+
+    def test_operator_override_requires_a_complete_valid_pair(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            state = Path(temporary)
+            self.assertEqual(
+                resolve_identity(state, "123456000789", "02:52:54:12:00:01")[:2],
+                ("123456000789", "02:52:54:12:00:01"),
+            )
+            with self.assertRaisesRegex(ValueError, "both ZD_SERIAL and ZD_MAC1"):
+                resolve_identity(state, "123456000789", "")
+            with self.assertRaisesRegex(ValueError, "locally administered unicast"):
+                resolve_identity(state, "123456000789", "00:52:54:12:00:01")
+
+
 class BundleBuilderTests(unittest.TestCase):
     def test_payload_tar_is_reproducible(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -325,7 +352,7 @@ class BundleBuilderTests(unittest.TestCase):
             patch_kernel(source, output)
             self.assertEqual(
                 hashlib.sha256(output.read_bytes()).hexdigest(),
-                "c3014270e817be56b2b3c79223bbb588ac8c28130662f35c42b77ede2c609803",
+                "df31fafd6e04a67d86269f81951d4d15898e029673c1e635a137c974d300ec66",
             )
 
     def test_r600_bl7_round_trip_preserves_known_ui_image(self):

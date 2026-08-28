@@ -29,6 +29,10 @@ COPY boot-initrd-handoff \
      run-zd1200-qemu.sh \
      run-zd1200-web.sh \
      write-boarddata.py \
+     zd_identity.py \
+     zd-controller-wrapper.sh \
+     zd-healthcheck.sh \
+     zd-memory-snapshot.sh \
      /opt/zd1200/
 
 RUN chmod +x /opt/zd1200/boot-initrd-handoff \
@@ -46,6 +50,6 @@ ENV STATE_DIR=/var/lib/zd1200 \
 VOLUME ["/var/lib/zd1200"]
 
 HEALTHCHECK --interval=30s --timeout=8s --start-period=10m --retries=3 \
-    CMD pgrep -f '[q]emu-system-i386' >/dev/null || exit 1
+    CMD ["/opt/zd1200/zd-healthcheck.sh"]
 
 CMD ["./run-zd1200-web.sh"]

@@ -38,7 +38,8 @@ REPO_FILES = (
     "zd-memory-snapshot.sh",
     "limit-process-cpu.py", "make-runtime-initrd.sh", "make-synthetic-cf.py",
     "patch_binary_artifact.py", "run-zd1200-qemu.sh", "run-zd1200-web.sh",
-    "write-boarddata.py", "zd-controller-wrapper.sh", "README.md",
+    "write-boarddata.py", "zd_identity.py", "zd-controller-wrapper.sh",
+    "zd-healthcheck.sh", "zd-memory-snapshot.sh", "README.md",
     "ZD1200-LAB-GUIDE.md", "VALIDATION.md", "binary_patch_catalog.json",
     "binary_patch_catalog.py", "binary_patch_catalog.schema.json",
     "release_manifest.json", "release_manifest.py", "release_manifest.schema.json",
@@ -238,8 +239,9 @@ def write_first_readme(
     path.write_text(
         f"""# ZD1200 local bundle — {release.version}.{release.build}\n\n
 This bundle was built locally from an operator-supplied Ruckus download.\n
-No firmware is fetched at runtime. Review `.env.example`, attach only a
-dedicated isolated Ethernet adapter, then run `docker compose build` and
+No firmware is fetched at runtime. Review `.env.example` and choose the
+recommended dedicated-adapter profile, or the advanced existing-host-bridge
+profile for a deliberately shared LAN, then run `docker compose build` and
 `docker compose up -d`. See `README.md` and `VALIDATION.md`.\n\n
 ## Important scope note\n\n
 {scope_note} Do not claim mesh validation from this bundle until the report

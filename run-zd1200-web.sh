@@ -69,12 +69,18 @@ if [ ! -f "$synthetic_disk" ]; then
     SYNTHETIC_DISK="$synthetic_disk" python3 "$work_dir/make-synthetic-cf.py"
 fi
 # The serial number and MACs live in the board-data records on the CF image
-# (read by the kernel's v54bsp driver; NOT patched into the kernel).  Rewrite
-# them on every launch so env changes take effect.  MAC2 = MAC1 + 1.
+# (read by the kernel's v54bsp driver; NOT patched into the kernel).  When an
+# operator does not explicitly set both values, create one unique local
+# identity in the persistent state volume. MAC2 = MAC1 + 1.
+IFS=$'\t' read -r identity_serial identity_mac identity_source < <(
+    python3 "$work_dir/zd_identity.py" --state-dir "$state_dir" \
+        --serial "${ZD_SERIAL:-}" --mac "${ZD_MAC1:-}"
+)
+echo "Board identity: $identity_serial / $identity_mac ($identity_source)"
 python3 "$work_dir/write-boarddata.py" \
     --disk "$synthetic_disk" \
-    --serial "${ZD_SERIAL:-123456000789}" \
-    --mac "${ZD_MAC1:-02:52:54:12:00:01}" \
+    --serial "$identity_serial" \
+    --mac "$identity_mac" \
     --model "${ZD_MODEL:-ZD1200}" \
     --customer "${ZD_CUSTOMER:-ruckus}"
 if [ ! -f "$persistent_disk" ]; then
@@ -90,6 +96,7 @@ setsid env KERNEL="$patched_kernel" INITRD="$runtime_initrd" \
     HTTPS_PORT="$https_port" \
     NETWORK_MODE="$network_mode" \
     TAP_IF="${TAP_IF:-tap-zd}" \
+    QEMU_NIC_MAC="$identity_mac" \
     nice -n 10 ./run-zd1200-qemu.sh \
     >>"$log_file" 2>&1 </dev/null &
 qemu_pid=$!

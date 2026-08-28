@@ -59,6 +59,27 @@ EOF
     apply_support_entitlement
 ) &
 
+# A host-side health probe cannot address this guest because the TAP bridge is
+# intentionally unnumbered.  Confirm readiness in the guest instead, then
+# publish a serial marker which the container health check can use.  Checking
+# both the service process and a listening web port avoids treating a merely
+# running QEMU process as a healthy controller.
+(
+    attempts=0
+    while [ "$attempts" -lt 120 ]; do
+        if /bin/busybox pidof webs >/dev/null 2>&1 \
+            && /bin/busybox awk '
+                $4 == "0A" && ($2 ~ /:0050$/ || $2 ~ /:01BB$/) { found = 1 }
+                END { exit !found }
+            ' /proc/net/tcp /proc/net/tcp6 2>/dev/null; then
+            echo 'ZD-HEALTH: guest web service ready' >/dev/console
+            exit 0
+        fi
+        attempts=$((attempts + 1))
+        /bin/busybox sleep 2
+    done
+    echo 'ZD-HEALTH: guest web service did not become ready' >/dev/console
+) &
 
 # Let rcS reach S98 normally.  Starting S98 here as well created a second
 # web server and a second diagnostic process.
