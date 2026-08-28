@@ -24,7 +24,7 @@ hash and metadata, never by a filename alone.
 | 10.5.1.0.282 | known | controller, R600 adoption, HTTPS and legacy FTP delivery validated |
 | 10.3.1.0.42 | experimental | fresh controller boot and factory HTTPS validated; this is not the final 10.3.1 refresh |
 | 10.2.1.0.232 | experimental | fresh controller boot and factory HTTPS validated |
-| 10.1.2.0.318 | experimental | fresh controller boot and factory HTTPS validated; AP delivery remains untested |
+| 10.1.2.0.318 | experimental | controller, R600 ISI adoption, legacy FTP delivery, FSI boot, and AP `RUN` validated |
 
 The included [MIT License](LICENSE) applies only to this repository's original
 glue code and documentation. It grants no rights to Ruckus materials.

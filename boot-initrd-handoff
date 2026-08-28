@@ -262,6 +262,23 @@ ZD_VSFTPD_INIT
     /bin/busybox chmod 755 /newroot/etc/init.d/vsftpd
     /bin/busybox rm -f /newroot/etc/init.d/S45vsftpd
     /bin/busybox ln -s vsftpd /newroot/etc/init.d/S45vsftpd
+    # Some older controller releases start then stop S45vsftpd while their
+    # adapter service initializes, leaving legacy APs to receive a TCP reset
+    # forever.  Restart it after the vendor S50controller and S99local hooks.
+    # `background=YES` in the vendor configuration makes this non-blocking.
+    /bin/busybox cat > /newroot/etc/init.d/S99zd_legacy_ftp <<'ZD_LEGACY_FTP_INIT'
+#!/bin/sh
+case "$1" in
+    start)
+        killall vsftpd 2>/dev/null || true
+        [ -x /usr/sbin/vsftpd ] && /usr/sbin/vsftpd /etc/vsftpd.conf
+        ;;
+    stop)
+        killall vsftpd 2>/dev/null || true
+        ;;
+esac
+ZD_LEGACY_FTP_INIT
+    /bin/busybox chmod 755 /newroot/etc/init.d/S99zd_legacy_ftp
     if [ "$factory_web_patch" -eq 0 ]; then
         # The stock image has no OpenSSH ssh-keygen. Dropbear's key generator
         # is a multicall symlink to /usr/sbin/dropbear. sys_init will generate

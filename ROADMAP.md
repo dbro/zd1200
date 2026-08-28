@@ -394,9 +394,12 @@ later releases retain `aidfs`. On the isolated Linux/KVM bench, each older
 build completed a factory boot, installed its AP payload, reached `READY`, and
 returned the setup-wizard HTTPS redirect at `192.168.0.2` without a DHCP
 server. The synthetic disk now grows its root partition to the selected
-rootfs, required by the 174-MiB 10.1.2 rootfs. These releases remain
-experimental pending wizard, AP-adoption, firmware-delivery, persistence, and
-model-specific validation; 10.3.1.0.42 is explicitly not the final refresh.
+rootfs, required by the 174-MiB 10.1.2 rootfs. 10.1.2.0.318 additionally
+completed R600 ISI adoption, legacy-FTP firmware delivery to its signed FSI,
+and post-upgrade `RUN` validation. The older releases remain experimental
+pending persistence and model-specific validation; 10.2.1.0.232 and
+10.3.1.0.42 still require physical AP adoption and firmware-delivery tests,
+and 10.3.1.0.42 is explicitly not the final refresh.
 
 Exit criteria:
 
@@ -467,6 +470,11 @@ Current Linux x86-64 bench evidence (2026-08-27):
   for the AP service account because the runtime had replaced the vendor
   writable account-database symlink; restoring that path allowed the R600
   image delivery to complete;
+- 10.1.2.0.318 was subsequently validated with a clean R600 ISI install:
+  the AP initially received TCP resets on FTP port 21, so the runtime now
+  restarts the vendor FTP daemon late in boot. The AP then completed the signed
+  FSI download, booted Image1, and reached `RUN`; no IPv4-only or certificate
+  alias workaround was retained.
 - after validation, the host management NIC remained `192.168.20.41/24` and
   the dedicated USB NIC plus `br-zd` remained unnumbered;
 - a host reboot recreated the bridge/TAP and returned the container, ZD, and

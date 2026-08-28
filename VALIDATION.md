@@ -104,6 +104,11 @@ advertised target. An already-current AP is not evidence that transfer works.
 Pass criteria: a version-changing transfer completes without repeating update
 errors, and the AP rejoins after reboot. This is a per-exact-release test.
 
+`fw show info` may report that `/writable/fw/main.cntl` is not in flash even
+when the AP selected the newly delivered image and reached `RUN`. Treat that
+line as diagnostic context, not a failure criterion; record the active image,
+reported firmware version, and controller state instead.
+
 ## ap-11n-scorpion mesh receive-repair regression test
 
 This applies only to a release/model combination recognized by the
@@ -140,7 +145,7 @@ for a sustained observation period.
 | Manual controller address survives restart without DHCP | passed | required per build |
 | AP adoption | passed | required per model |
 | AP static address survives AP/controller restart without DHCP | passed | required per build/model |
-| Version-changing AP firmware delivery | passed — R600 ISI `110.0.0.0.675` → patched UI `10.5.1.0.282`, using both secured HTTPS and legacy FTP delivery | required per build/model |
+| Version-changing AP firmware delivery | passed — R600 ISI `110.0.0.0.675` → patched UI `10.5.1.0.282`, using both secured HTTPS and legacy FTP delivery | 10.1.2.0.318 passed — R600 ISI `110.0.0.0.675` → signed FSI `10.1.2.0.318` using legacy FTP; 10.2.1.0.232 and 10.3.1.0.42 required |
 | R600 patched mesh bidirectional traffic | pending repeat from the generated bundle; passed in the prior two-R600 lab | not applicable or required by signature/model |
 | Host reboot / bridge recovery | passed — bridge, TAP, ZD, and R600 recovered | required per host profile |
 | USB-adapter unplug/replug recovery | passed — watcher reattached the USB NIC; ZD container stayed at restart count 0 | required per host profile |
