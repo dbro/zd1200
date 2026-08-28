@@ -28,6 +28,8 @@ services:
       # Board data written into the CF image: serial + base MAC (MAC2=MAC1+1).
       ZD_SERIAL: ${ZD_SERIAL:-123456000789}
       ZD_MAC1: ${ZD_MAC1:-02:52:54:12:00:01}
+      # Keep RSA; optionally advertise an additional ECDSA host key.
+      ZD_ENABLE_ECDSA_SSH: ${ZD_ENABLE_ECDSA_SSH:-0}
       # Work around the 2.6.32 tickless-idle spin demonstrated in cpu-study.
       KERNEL_EXTRA: nohz=off
       WEB_WAIT_SECONDS: "600"
