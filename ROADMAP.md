@@ -471,11 +471,12 @@ Current Linux x86-64 bench evidence (2026-08-27):
   for the AP service account because the runtime had replaced the vendor
   writable account-database symlink; restoring that path allowed the R600
   image delivery to complete;
-- 10.1.2.0.318 was subsequently validated with a clean R600 ISI install:
-  the AP initially received TCP resets on FTP port 21, so the runtime now
-  restarts the vendor FTP daemon late in boot. The AP then completed the signed
-  FSI download, booted Image1, and reached `RUN`; no IPv4-only or certificate
-  alias workaround was retained.
+- 10.1.2.0.318 was subsequently validated with a clean R600 ISI install.
+  Temporary instrumentation confirmed the stock FTP sequence: `S45vsftpd`
+  starts the default daemon, then controller initialization restarts it with
+  `/etc/vsftpd2.conf`; port 21 remains listening. The AP completed the signed
+  FSI download, booted Image1, and reached `RUN`; no extra FTP restart,
+  IPv4-only, or certificate-alias workaround was retained.
 - after validation, the host management NIC remained `192.168.20.41/24` and
   the dedicated USB NIC plus `br-zd` remained unnumbered;
 - a host reboot recreated the bridge/TAP and returned the container, ZD, and
