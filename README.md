@@ -29,6 +29,10 @@ hash and metadata, never by a filename alone.
 The included [MIT License](LICENSE) applies only to this repository's original
 glue code and documentation. It grants no rights to Ruckus materials.
 
+Before a release, run `python3 check_repository_hygiene.py`. It rejects tracked
+firmware/archive formats, private-key markers, and the formerly unprovenanced
+diagnostic payload paths.
+
 `prepare-vendor-image.sh` accepts either the original opaque encrypted download
 or its already-decrypted gzip-TAR form and creates the ignored `image/`
 directory locally. Select an older exact build with `RELEASE_ID`; otherwise it

@@ -28,6 +28,7 @@ from patch_binary_artifact import (
 )
 from ruckus_bl7 import parse_bl7
 from zd_identity import IDENTITY_FILE, parse_identity, resolve_identity
+from check_repository_hygiene import violations as repository_hygiene_violations
 
 
 def rule(
@@ -311,6 +312,11 @@ class BoardIdentityTests(unittest.TestCase):
                 resolve_identity(state, "123456000789", "")
             with self.assertRaisesRegex(ValueError, "locally administered unicast"):
                 resolve_identity(state, "123456000789", "00:52:54:12:00:01")
+
+
+class RepositoryHygieneTests(unittest.TestCase):
+    def test_tracked_tree_is_source_only_and_has_no_private_key(self):
+        self.assertEqual(repository_hygiene_violations(), [])
 
 
 class BundleBuilderTests(unittest.TestCase):
