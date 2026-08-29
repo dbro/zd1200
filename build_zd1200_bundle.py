@@ -270,6 +270,7 @@ def build_bundle(
     unsquashfs: Path | None = None,
     mksquashfs: Path | None = None,
     r600_bl7: Path | None = None,
+    auto_r600_mesh: bool = False,
 ) -> dict[str, object]:
     if r600_bl7 is not None and (unsquashfs is not None or mksquashfs is not None):
         raise ValueError("--r600-bl7 cannot be combined with SquashFS tool paths")
@@ -301,7 +302,18 @@ def build_bundle(
             source_dir / "bzImage", image / "bzImage", image / "vmlinux"
         )
         make_boot_initrd(bundle)
-        if r600_bl7 is not None or (unsquashfs is not None and mksquashfs is not None):
+        mesh_repair_supported = (
+            release.features.get("r600_mesh_receive_repair")
+            == "available_when_ap_payload_is_repacked"
+        )
+        patch_scorpion = r600_bl7 is not None or (unsquashfs is not None and mksquashfs is not None)
+        if auto_r600_mesh:
+            if r600_bl7 is not None:
+                raise ValueError("--auto-r600-mesh cannot be combined with --r600-bl7")
+            patch_scorpion = mesh_repair_supported
+            if patch_scorpion and (unsquashfs is None or mksquashfs is None):
+                raise ValueError("--auto-r600-mesh requires both SquashFS tool paths")
+        if patch_scorpion:
             scorpion_messages, scorpion_models = patch_scorpion_payload(
                 source_dir, unsquashfs=unsquashfs, mksquashfs=mksquashfs, override=r600_bl7
             )
@@ -321,7 +333,11 @@ def build_bundle(
             scorpion_models = None
             scorpion_status = {
                 "status": "not_applied",
-                "reason": "BL7 AP payload repacker not selected; provide both SquashFS tool paths",
+                "reason": (
+                    "mesh receive repair is not required for this exact release"
+                    if auto_r600_mesh
+                    else "BL7 AP payload repacker not selected; provide both SquashFS tool paths"
+                ),
             }
             scorpion_warnings = [
                 "ap-11n-scorpion AP mesh receive repair is not included in this bundle.",
@@ -389,6 +405,11 @@ def main() -> None:
     parser.add_argument("--unsquashfs", type=Path, help="Ruckus-compatible unsquashfs for R600 payload patching")
     parser.add_argument("--mksquashfs", type=Path, help="Ruckus-compatible mksquashfs for R600 payload patching")
     parser.add_argument("--r600-bl7", type=Path, help="local unsigned, model-matching R600 BL7 override")
+    parser.add_argument(
+        "--auto-r600-mesh",
+        action="store_true",
+        help="apply the R600 mesh repair only when the selected release manifest requires it",
+    )
     args = parser.parse_args()
     if not args.input.is_file():
         parser.error(f"input not found: {args.input}")
@@ -404,8 +425,9 @@ def main() -> None:
             release=release,
             repo_root=args.repo_root,
             unsquashfs=args.unsquashfs,
-        mksquashfs=args.mksquashfs,
-        r600_bl7=args.r600_bl7,
+            mksquashfs=args.mksquashfs,
+            r600_bl7=args.r600_bl7,
+            auto_r600_mesh=args.auto_r600_mesh,
         )
     except ValueError as error:
         parser.error(str(error))

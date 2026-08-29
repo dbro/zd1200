@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Parse and rebuild unsigned Ruckus AP ``.bl7`` images.
+"""Parse and rebuild Ruckus AP ``.bl7`` images used by the local builder.
 
-The format is intentionally handled without guessing: this module supports
-the unsigned (UI) form used by the local R600 test image and refuses signed
-ISI/FSI images rather than discarding their trailer or signatures.
+Normal parsing and rebuilding intentionally operate only on unsigned UI
+images.  ``signed_to_ui`` is the explicit, narrowly scoped conversion used by
+the 10.5.1 local R600 mesh-repair workflow: it validates the signed image
+header and payload first, drops its signature trailer, and rebuilds an
+unsigned UI header.  It does not claim to validate or preserve a signature.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ import struct
 HEADER_SIZE = 160
 MAGIC = b"RCKS"
 UI_IMAGE_TYPE = 0
+SIGNED_IMAGE_TYPES = frozenset({1, 2})
 PAGE_SIZE = 0x10000
 
 
@@ -95,3 +98,35 @@ def parse_bl7(data: bytes) -> Bl7Image:
         raise ValueError("BL7 header checksum mismatch")
     return Bl7Image(header, kernel, rootfs, padding)
 
+
+def signed_to_ui(data: bytes) -> bytes:
+    """Convert one validated signed BL7 container into its unsigned UI form.
+
+    This is deliberately not implicit in :func:`parse_bl7`: callers must make
+    the policy decision to remove a signature.  The payload is retained
+    byte-for-byte; only the trailer and signature-type header field change.
+    """
+    if len(data) < HEADER_SIZE or data[:4] != MAGIC:
+        raise ValueError("not a Ruckus BL7 image")
+    header = bytearray(data[:HEADER_SIZE])
+    if header[9] != HEADER_SIZE:
+        raise ValueError(f"unsupported BL7 header length: {header[9]}")
+    image_type = struct.unpack(">I", header[0x84:0x88])[0]
+    if image_type not in SIGNED_IMAGE_TYPES:
+        raise ValueError("expected signed ISI/FSI BL7 image")
+    next_image = struct.unpack(">I", header[4:8])[0]
+    binl7_len = struct.unpack(">I", header[0x10:0x14])[0]
+    payload_end = HEADER_SIZE + binl7_len
+    if next_image < HEADER_SIZE or next_image > payload_end or payload_end >= len(data):
+        raise ValueError("signed BL7 offsets or signature trailer are invalid")
+    payload = data[HEADER_SIZE:payload_end]
+    if hashlib.md5(payload).digest() != header[0x18:0x28]:
+        raise ValueError("signed BL7 payload MD5 mismatch")
+    expected_checksum = struct.unpack(">H", header[0x2A:0x2C])[0]
+    header[0x2A:0x2C] = b"\0\0"
+    if _internet_checksum(header) != expected_checksum:
+        raise ValueError("signed BL7 header checksum mismatch")
+    header[0x84:0x88] = struct.pack(">I", UI_IMAGE_TYPE)
+    header[0x2A:0x2C] = b"\0\0"
+    header[0x2A:0x2C] = struct.pack(">H", _internet_checksum(header))
+    return bytes(header) + payload

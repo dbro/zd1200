@@ -31,7 +31,7 @@ from patch_binary_artifact import (
     parse_masked_hex,
     rebuild_artifact,
 )
-from ruckus_bl7 import parse_bl7
+from ruckus_bl7 import parse_bl7, signed_to_ui
 from zd_identity import IDENTITY_FILE, parse_identity, resolve_identity
 from zd_root_ssh import validate_public_key
 from check_repository_hygiene import violations as repository_hygiene_violations
@@ -449,6 +449,23 @@ class BundleBuilderTests(unittest.TestCase):
         signed[0x84:0x88] = (1).to_bytes(4, "big")
         with self.assertRaisesRegex(ValueError, "signed ISI/FSI"):
             parse_bl7(bytes(signed))
+
+    def test_signed_r600_payload_converts_to_unsigned_ui(self):
+        archive = Path(
+            "/home/dan/src/zd1200/install-images/"
+            "zd1200_10.5.1.0.282.ap_10.5.1.0.282.img.tgz"
+        )
+        if not archive.is_file():
+            self.skipTest("local proprietary ZD fixture is unavailable")
+        with tarfile.open(archive, "r:gz") as source:
+            member = source.getmember(
+                "firmwares/ap-patch/patch000/ap-11n-scorpion/10.5.1.0.282/rcks_fw.bl7.main"
+            )
+            signed = source.extractfile(member).read()
+        converted = signed_to_ui(signed)
+        self.assertEqual(len(converted), 160 + int.from_bytes(signed[0x10:0x14], "big"))
+        self.assertEqual(converted[0x84:0x88], b"\0\0\0\0")
+        self.assertEqual(parse_bl7(converted).version, "10.5.1.0.282")
 
     def test_r600_control_sizes_follow_overridden_bl7(self):
         with tempfile.TemporaryDirectory() as temporary:

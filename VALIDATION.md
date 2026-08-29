@@ -134,9 +134,10 @@ unsigned patched UI image, perform this one-time preparation manually:
 
 An AP already running UI or ISI firmware does not need this step. Never use an
 image for a different model, and do not treat an FSI image as interchangeable
-with ISI. The generated bundle refuses signed ISI/FSI BL7 payloads rather than
-discarding their signatures. The current automated AP-payload patcher is
-validated for R600 only. The exact shared-payload aliases R500, R310, T300,
+with ISI. For the exact 10.5.1 R600 payload, the generated bundle deliberately
+validates the signed header/payload, removes its signature trailer, and creates
+an unsigned UI image before applying the repair. The current automated
+AP-payload patcher is validated for R600 only. The exact shared-payload aliases R500, R310, T300,
 T300e, T301n, and T301s are patched as experimental targets and still require
 model-specific validation.
 

@@ -67,15 +67,19 @@ docker compose up -d --build
 
 Set `ZD_VENDOR_ARCHIVE` in `.env` to the basename of the downloaded file in
 `vendor/` (or set `ZD_VENDOR_DIR` to an existing directory). For a 10.5.1
-R600 mesh-repair deployment, also put the locally produced patched unsigned
-R600 BL7 in `vendor/` and set `ZD_R600_BL7` to its basename. Leave that
-setting empty for the signed-FSI 10.1–10.3 releases.
+R600 mesh-repair deployment, no additional AP image is required: the
+preparation service builds the patched unsigned R600 payload directly from the
+selected ZD download. The 10.1–10.3 scoped releases are left unmodified
+because this receive-path bug is not present there.
 
 The one-shot `zd1200-prepare` service reads `vendor/` read-only. It detects the
 exact release from the full input SHA-256, decrypts and validates locally,
 creates the controller/AP runtime files in the `zd1200-runtime` named volume,
 then exits. Compose starts `zd1200` only after this succeeds. Neither the
 download nor derived vendor bytes are stored in Docker image layers.
+During the first Docker build, Docker fetches and compiles a pinned public GPL
+source revision of the historical LZMA SquashFS tools needed only for that
+10.5.1 R600 repack; see `THIRD_PARTY_NOTICES.md`.
 
 Subsequent `docker compose up -d` calls verify the same input fingerprint and
 return immediately. To deliberately replace the controller download or R600
@@ -185,11 +189,12 @@ section-name table, which is not mapped by any loadable program segment and is
 not used by the running kernel.
 
 The `ap-11n-scorpion` rule operates on an already-extracted module; BL7 filesystem
-extraction and rebuilding remain a separate packaging step. The unsigned BL7
-container can now be parsed and safely round-tripped with `ruckus_bl7.py`; it
-rejects signed ISI/FSI images rather than silently stripping their signatures.
-SquashFS extraction/rebuild and integration of the module rule are still
-available as a standalone operation when the matching GPL tools are installed:
+extraction and rebuilding remain a separate packaging step. For the exact
+10.5.1 R600 payload, the automatic builder validates the signed header and
+payload, removes its signature trailer, converts it to unsigned UI, then
+applies the module repair. This is an explicit local conversion, not signature
+validation or preservation. Standalone SquashFS extraction/rebuild and module
+integration are also available when the matching GPL tools are installed:
 
 ```sh
 python3 patch_r600_bl7.py \
@@ -199,11 +204,10 @@ python3 patch_r600_bl7.py \
 ```
 
 The command patches exactly one `lib/modules/*/net/wlan.ko`, writes a new
-unsigned image, and leaves the input untouched. It does not process signed
-ISI/FSI images; signed ZD-delivered AP payloads therefore require an ISI/signing
-bypass workflow before this operation. The bundle builder accepts the same two
-tool paths to patch the shared `ap-11n-scorpion` payload in its nested AP
-firmware. R600 is the validated model; R500, R310, T300, T300e, T301n, and
+unsigned image, and leaves the input untouched. It accepts a signed input only
+for the explicit UI conversion above; it never writes a modified signed image.
+The bundle builder enables that path only for the exact 10.5.1 release needing
+the repair. R600 is the validated model; R500, R310, T300, T300e, T301n, and
 T301s are patched only when they resolve to the exact same vendor BL7 and are
 explicitly reported as **experimental**.
 

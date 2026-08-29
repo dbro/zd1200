@@ -11,14 +11,17 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 
 from patch_binary_artifact import apply_rules, rules_for_artifact
-from ruckus_bl7 import parse_bl7
+from ruckus_bl7 import parse_bl7, signed_to_ui
 
 
 def _run(tool: Path, *args: str) -> None:
-    subprocess.run([str(tool), *args], check=True)
+    # The bundle builder reserves stdout for its JSON report.  Historical
+    # SquashFS tools print progress on stdout, so keep it with diagnostics.
+    subprocess.run([str(tool), *args], check=True, stdout=sys.stderr)
 
 
 def patch_image(
@@ -28,8 +31,17 @@ def patch_image(
     unsquashfs: Path,
     mksquashfs: Path,
 ) -> list[str]:
-    image = parse_bl7(source.read_bytes())
-    messages: list[str] = [f"input version: {image.version}"]
+    original = source.read_bytes()
+    image_type = int.from_bytes(original[0x84:0x88], "big") if len(original) >= 0x88 else -1
+    if image_type:
+        original = signed_to_ui(original)
+        messages: list[str] = [
+            f"removed signed BL7 trailer (type {image_type}) and converted header to unsigned UI"
+        ]
+    else:
+        messages = []
+    image = parse_bl7(original)
+    messages.append(f"input version: {image.version}")
     with tempfile.TemporaryDirectory(prefix="r600-bl7-") as temporary:
         root = Path(temporary)
         rootfs_image = root / "rootfs.img"

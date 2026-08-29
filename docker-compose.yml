@@ -7,7 +7,6 @@ services:
     restart: "no"
     environment:
       ZD_VENDOR_ARCHIVE: ${ZD_VENDOR_ARCHIVE:?Set ZD_VENDOR_ARCHIVE to the basename of the downloaded ZD archive in ./vendor}
-      ZD_R600_BL7: ${ZD_R600_BL7:-}
     volumes:
       - ${ZD_VENDOR_DIR:-./vendor}:/vendor:ro
       - zd1200-runtime:/runtime
