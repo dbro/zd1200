@@ -251,8 +251,12 @@ ZD_ROOT_CLI
     # its two AJAX modules still reject requests unless a CSRF header matches
     # that CID.  Use narrowly patched copies until the completed wizard writes
     # an explicit non-factory state.  A normal configured boot gets originals.
+    # Firmware generations encode completed-wizard state differently.
+    # Accept both textual and numeric false values so configured boots restore
+    # the normal Dropbear key generator and SSH service.
     if [ -f /data/etc/airespider/system.xml ] \
-        && /bin/busybox grep -q 'is-factory="false"' /data/etc/airespider/system.xml; then
+        && /bin/busybox grep -Eq 'is-factory="(false|0)"|factory-mode="(false|0)"' \
+            /data/etc/airespider/system.xml; then
         factory_web_patch=0
     fi
     /bin/busybox umount /data 2>/dev/null || true

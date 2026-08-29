@@ -27,6 +27,7 @@ RUN apt-get update \
         binutils \
         binutils-i686-linux-gnu \
         cpio \
+        gcc-i686-linux-gnu \
         curl \
         e2fsprogs \
         gzip \
