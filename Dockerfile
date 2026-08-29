@@ -59,7 +59,6 @@ RUN chmod +x /opt/zd1200/boot-initrd-handoff \
 ENV STATE_DIR=/var/lib/zd1200 \
     NETWORK_MODE=tap \
     TAP_IF=tap-zd \
-    GUEST_IP=192.168.50.10 \
     WEB_PROBE=auto \
     MEMORY_MB=2048 \
     WEB_WAIT_SECONDS=600

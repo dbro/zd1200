@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Create or load a persistent, locally administered ZD board identity.
 
-The synthetic CF board-data records and QEMU's e1000e NIC must use the same
+The synthetic CF board-data records and QEMU's igb NIC must use the same
 base MAC.  A generated identity is retained in the Docker state volume so a
 container recreation neither changes the controller identity nor collides with
 another freshly generated bundle on the same LAN.

@@ -230,7 +230,7 @@ If the variable is absent, the default runtime volume is `zd1200-runtime`.
 | Setting | Purpose |
 | --- | --- |
 | `ZD_SERIAL` and `ZD_MAC1` | Set a chosen, stable controller identity. Set both before the first start, or leave both unset for a generated persistent identity. |
-| `ZD_WEB_PROBE` | Controls launcher readiness only. Leave it at `auto`: it disables in-container HTTP probing for the normal TAP network and enables a local probe for user-mode networking. `on` is not supported with TAP. |
+| `ZD_WEB_PROBE` | Controls launcher readiness only. Leave it at `auto`: it disables in-container HTTP probing for the normal TAP or macvlan network and enables a local probe for user-mode networking. `on` is not supported with TAP or macvlan. |
 | `ZD_ENABLE_ECDSA_SSH=1` | Adds an ECDSA host key to the ordinary ZoneDirector administrative SSH service while retaining RSA. |
 | `ZD_ENABLE_ROOT_CLI=1` | Enables a local root shell through the authenticated ZD CLI script hook. It does not add a network listener. |
 | `ZD_ROOT_SSH_PUBLIC_KEY` | Enables public-key-only root SSH on TCP 2222 for 10.5.1.0.282. RSA and ECDSA keys are accepted; Ed25519 is not. |
@@ -252,6 +252,34 @@ ZD_TAP_IF=tap-zd
 This advanced profile never changes the existing bridge's members, addresses,
 routes, or default route. Do not enable `zd1200-bridge-watch.service` for it.
 Do not put an unconfigured factory controller on a production LAN.
+
+### Docker macvlan (advanced, experimental)
+
+Use macvlan when the Docker host has an existing wired management VLAN and you
+cannot dedicate a physical adapter. The QEMU guest receives Layer-2 access by
+bridging the container's macvlan interface to its private TAP; the guest, not
+the Docker container, owns the management address.
+
+Add these settings to `.env`, using the host interface and subnet of the VLAN
+where the controller is intentionally allowed to appear:
+
+```ini
+ZD_MACVLAN_PARENT=eno1
+ZD_MACVLAN_SUBNET=192.168.222.0/24
+ZD_MACVLAN_GATEWAY=192.168.222.1
+```
+
+Then start the alternate Compose profile:
+
+```sh
+docker compose -f docker-compose.macvlan.yml up -d --build
+```
+
+Do not run the dedicated-adapter bridge helper for this profile. Docker hosts
+normally cannot communicate directly with their own macvlan containers, so use
+another management station on the selected VLAN for the setup wizard and ZD
+administration. This profile has not yet completed physical AP validation; use
+it only on an intentionally isolated or managed VLAN.
 
 To remove the dedicated network path, stop Compose and both helper services.
 For the existing-bridge profile, stop Compose and only

@@ -34,6 +34,7 @@ from verify_release_archive import verify_decrypted_archive, verify_encrypted_in
 
 REPO_FILES = (
     ".dockerignore", ".env.example", "Dockerfile", "docker-compose.yml",
+    "docker-compose.macvlan.yml",
     "boot-initrd-handoff", "boot-initrd-init", "boot-initrd-inittab",
     "make-boot-initrd.sh", "pivot-exec.S", "zd-controller-wrapper.sh",
     "zd-memory-snapshot.sh",

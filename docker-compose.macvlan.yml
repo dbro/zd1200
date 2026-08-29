@@ -1,0 +1,97 @@
+# Advanced alternative to the dedicated-USB-adapter profile.
+#
+# Use this complete Compose file on its own:
+#   docker compose -f docker-compose.macvlan.yml up -d --build
+#
+# The macvlan interface is bridged to QEMU's private TAP inside the container,
+# so the ZoneDirector guest owns the LAN identity and management address. The
+# Docker host normally cannot talk directly to macvlan guests; use a separate
+# management station on the selected VLAN.
+services:
+  zd1200-prepare:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: local/zd1200-qemu:lab
+    restart: "no"
+    network_mode: none
+    environment:
+      ZD_VENDOR_ARCHIVE: ${ZD_VENDOR_ARCHIVE:?Set ZD_VENDOR_ARCHIVE to the basename of the downloaded ZD archive in ./vendor}
+    volumes:
+      - ${ZD_VENDOR_DIR:-./vendor}:/vendor:ro
+      - zd1200-runtime:/runtime
+    entrypoint: ["/opt/zd1200/prepare-compose-runtime.sh"]
+    command: []
+
+  zd1200:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: local/zd1200-qemu:lab
+    container_name: ${ZD_CONTAINER_NAME:-zd1200}
+    restart: unless-stopped
+    init: true
+    depends_on:
+      zd1200-prepare:
+        condition: service_completed_successfully
+
+    devices:
+      - /dev/kvm:/dev/kvm
+      - /dev/net/tun:/dev/net/tun
+
+    networks:
+      zd1200-macvlan: {}
+
+    environment:
+      CPU_MODEL: pentium3
+      MEMORY_MB: "2048"
+      NETWORK_MODE: bridge
+      # Docker names the macvlan attachment eth0 inside this container.
+      BRIDGE_UPLINK_IF: eth0
+      TAP_IF: ${ZD_TAP_IF:-tap-zd}
+      WEB_PROBE: ${ZD_WEB_PROBE:-auto}
+      ZD_SERIAL: ${ZD_SERIAL:-}
+      ZD_MAC1: ${ZD_MAC1:-}
+      ZD_ENABLE_ECDSA_SSH: ${ZD_ENABLE_ECDSA_SSH:-0}
+      ZD_ENABLE_ROOT_CLI: ${ZD_ENABLE_ROOT_CLI:-0}
+      ZD_ROOT_SSH_PUBLIC_KEY: ${ZD_ROOT_SSH_PUBLIC_KEY:-}
+      ZD_SUPPORT_ENTITLEMENT_END: ${ZD_SUPPORT_ENTITLEMENT_END:-}
+      KERNEL_EXTRA: nohz=off
+      WEB_WAIT_SECONDS: "600"
+      VM_SNAPSHOT: "0"
+
+    volumes:
+      - zd1200-runtime:/opt/zd1200/image:ro
+      - zd1200-state:/var/lib/zd1200
+
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 20s
+
+    healthcheck:
+      test: ["CMD", "/opt/zd1200/zd-healthcheck.sh"]
+      interval: 30s
+      timeout: 8s
+      start_period: 10m
+      retries: 3
+
+volumes:
+  zd1200-runtime:
+    name: ${ZD_RUNTIME_VOLUME:-zd1200-runtime}
+  zd1200-state:
+    name: ${ZD_STATE_VOLUME:-zd1200-state}
+
+networks:
+  zd1200-macvlan:
+    name: ${ZD_MACVLAN_NETWORK_NAME:-zd1200-macvlan}
+    driver: macvlan
+    driver_opts:
+      parent: ${ZD_MACVLAN_PARENT:?Set ZD_MACVLAN_PARENT to the Docker host interface carrying the intended management VLAN}
+    ipam:
+      config:
+        - subnet: ${ZD_MACVLAN_SUBNET:?Set ZD_MACVLAN_SUBNET, for example 192.168.222.0/24}
+          gateway: ${ZD_MACVLAN_GATEWAY:?Set ZD_MACVLAN_GATEWAY for the selected subnet}

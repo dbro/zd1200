@@ -262,12 +262,6 @@ fi
 # transferring control to the installed ZD userspace.
 echo D > /dev/watchdog 2>/dev/null || true
 
-# The synthetic board reports COB7402, which makes the stock network script
-# choose igb2. The QEMU e1000e device is supported by the bundled e1000e
-# module, so load it before normal userspace hardware detection runs.
-/bin/busybox insmod /newroot/lib/modules/2.6.32.24/kernel/drivers/net/e1000e/e1000e.ko \
-    >/dev/console 2>&1 || true
-
 # Add a disposable diagnostic startup script. The disk is opened through
 # QEMU's snapshot mode, so this does not alter the source image.  The script
 # is supplied as a regular initrd file; constructing it with nested shell

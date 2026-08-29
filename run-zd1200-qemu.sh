@@ -62,18 +62,47 @@ case "${NETWORK_MODE:-user}" in
         fi
         net_args=( -net "tap,ifname=$tap_if,script=no,downscript=no" )
         ;;
+    bridge)
+        # Advanced macvlan profile: eth0 is Docker's macvlan attachment.  It
+        # has no useful container address; bridge it to a private TAP so the
+        # guest, rather than Docker, owns the LAN identity and address.
+        uplink_if="${BRIDGE_UPLINK_IF:-eth0}"
+        bridge_if="${BRIDGE_IF:-br-zd}"
+        tap_if="${TAP_IF:-tap-zd}"
+        if ! ip link show "$uplink_if" >/dev/null 2>&1; then
+            echo "Missing bridge uplink interface: $uplink_if" >&2
+            exit 1
+        fi
+        if ip link show "$bridge_if" >/dev/null 2>&1; then
+            echo "Bridge interface already exists: $bridge_if" >&2
+            exit 1
+        fi
+        if ip link show "$tap_if" >/dev/null 2>&1; then
+            echo "TAP interface already exists: $tap_if" >&2
+            exit 1
+        fi
+        ip addr flush dev "$uplink_if"
+        ip link add name "$bridge_if" type bridge
+        ip link set dev "$uplink_if" master "$bridge_if"
+        ip tuntap add dev "$tap_if" mode tap
+        ip link set dev "$uplink_if" up
+        ip link set dev "$tap_if" master "$bridge_if"
+        ip link set dev "$tap_if" up
+        ip link set dev "$bridge_if" up
+        net_args=( -net "tap,ifname=$tap_if,script=no,downscript=no" )
+        ;;
     none)
         net_args=( -net none )
         nic_args=()
         ;;
     *)
-        echo "NETWORK_MODE must be user or tap" >&2
+        echo "NETWORK_MODE must be user, tap, bridge, or none" >&2
         exit 2
         ;;
 esac
 
 if [ "${NETWORK_MODE:-user}" != none ]; then
-    nic_args=( -net nic,model=e1000e,macaddr="${QEMU_NIC_MAC:-02:52:54:12:00:01}" )
+    nic_args=( -net nic,model=igb,macaddr="${QEMU_NIC_MAC:-02:52:54:12:00:01}" )
 fi
 
 snapshot_args=()

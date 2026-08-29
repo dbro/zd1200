@@ -116,7 +116,7 @@ fi
 
 case "$web_probe" in
     auto)
-        if [ "$network_mode" = tap ]; then
+        if [ "$network_mode" = tap ] || [ "$network_mode" = bridge ]; then
             web_probe=off
         else
             web_probe=on
@@ -148,8 +148,8 @@ else
     echo "Startup runs at full speed and has a ${wait_seconds}s readiness deadline."
 fi
 if [ "$web_probe" != off ]; then
-    if [ "$network_mode" = tap ]; then
-        echo "WEB_PROBE=on is not supported with NETWORK_MODE=tap; use auto or off." >&2
+    if [ "$network_mode" = tap ] || [ "$network_mode" = bridge ]; then
+        echo "WEB_PROBE=on is not supported with NETWORK_MODE=$network_mode; use auto or off." >&2
         exit 2
     else
         probe_base="https://127.0.0.1:$https_port"
