@@ -4,6 +4,8 @@ synthetic-cf.img
 *.qcow2.*
 qemu-tmp/
 image/
+runtime/
+vendor/
 archive/
 rootfs/
 bootinitramfs.runtime.gz

@@ -16,26 +16,17 @@ RUN apt-get update \
         qemu-system-x86 \
         qemu-utils \
         ripgrep \
+        openssl \
+        tar \
+        unzip \
         util-linux \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/zd1200
-COPY boot-initrd-handoff \
-     binary_patch_catalog.json \
-     binary_patch_catalog.py \
-     limit-process-cpu.py \
-     make-runtime-initrd.sh \
-     make-synthetic-cf.py \
-     patch_binary_artifact.py \
-     run-zd1200-qemu.sh \
-     run-zd1200-web.sh \
-     write-boarddata.py \
-     zd_identity.py \
-     zd_root_ssh.py \
-     zd-controller-wrapper.sh \
-     zd-healthcheck.sh \
-     zd-memory-snapshot.sh \
-     /opt/zd1200/
+# The build context deliberately excludes vendor/, runtime/, firmware files,
+# archives, and private material.  This generic image contains only project
+# source plus the local preparation/runtime toolchain.
+COPY . /opt/zd1200/
 
 RUN chmod +x /opt/zd1200/boot-initrd-handoff \
         /opt/zd1200/*.sh /opt/zd1200/*.py \

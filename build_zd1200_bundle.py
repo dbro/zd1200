@@ -39,6 +39,7 @@ REPO_FILES = (
     "zd-memory-snapshot.sh",
     "limit-process-cpu.py", "make-runtime-initrd.sh", "make-synthetic-cf.py",
     "patch_binary_artifact.py", "run-zd1200-qemu.sh", "run-zd1200-web.sh",
+    "prepare-compose-runtime.sh",
     "write-boarddata.py", "zd_identity.py", "zd_root_ssh.py", "zd-controller-wrapper.sh",
     "zd-healthcheck.sh", "zd-memory-snapshot.sh", "README.md",
     "ZD1200-LAB-GUIDE.md", "VALIDATION.md", "binary_patch_catalog.json",

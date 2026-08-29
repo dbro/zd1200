@@ -33,19 +33,15 @@ Before a release, run `python3 check_repository_hygiene.py`. It rejects tracked
 firmware/archive formats, private-key markers, and the formerly unprovenanced
 diagnostic payload paths.
 
-`prepare-vendor-image.sh` accepts either the original opaque encrypted download
-or its already-decrypted gzip-TAR form and creates the ignored `image/`
-directory locally. Select an older exact build with `RELEASE_ID`; otherwise it
-uses the known 10.5.1.0.282 manifest. Legacy TAC decryption is performed
-locally with an adapted, attributed
+Legacy TAC decryption is performed locally with an adapted, attributed
 [aioruckus](https://github.com/ms264556/aioruckus) BSD-0-Clause
 implementation; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-The script verifies the encrypted input hash when applicable, then verifies the
-decrypted archive identity, safe TAR layout/links, vendor metadata, and vendor
-kernel/rootfs MD5 values before extracting `bzImage`, `vmlinux`, `rootfs.ext2`,
-the base initramfs, and the complete AP/aidfs payload. Generated output is
-ignored by Git and must never be committed.
+The Compose preparation service verifies the encrypted input hash when
+applicable, then verifies the decrypted archive identity, safe TAR layout and
+links, vendor metadata, and vendor kernel/rootfs MD5 values before extracting
+and transforming it. Generated output is ignored by Git and must never be
+committed.
 
 ## Prerequisites
 
@@ -54,26 +50,47 @@ ignored by Git and must never be committed.
   dedicated-adapter profile keeps the host unnumbered on its adapter, bridge,
   and TAP interface. An existing-host-bridge profile is available for an
   intentionally shared LAN.
-- Host tools for preparation: Bash, Python 3, `tar`, `gzip`, `cpio`,
-  `openssl`, GNU binutils (`as`, `ld`), `md5sum`, and `sha256sum`. On an
-  ARM64 Linux host, install `binutils-i686-linux-gnu`; the scripts select it
-  automatically for the x86 guest helper. ARM64 remains experimental because
-  no physical-AP validation host is available.
+- Docker handles local decryption, validation, extraction, patching, and the
+  required preparation tools. The host needs only Docker Compose plus the
+  separate Linux bridge helper prerequisites when physical AP networking is
+  wanted. ARM64 remains experimental because no physical-AP validation host is
+  available.
 
-## Build the local image
+## One-command local installation
 
 ```sh
+mkdir -p vendor
+# Copy the Ruckus ZD download into vendor/.
 cp .env.example .env
-./prepare-vendor-image.sh /absolute/path/to/zd1200_10.5.1.0.282.ap_10.5.1.0.282.img.tgz
 docker compose up -d --build
 ```
 
-For an older experimental build:
+Set `ZD_VENDOR_ARCHIVE` in `.env` to the basename of the downloaded file in
+`vendor/` (or set `ZD_VENDOR_DIR` to an existing directory). For a 10.5.1
+R600 mesh-repair deployment, also put the locally produced patched unsigned
+R600 BL7 in `vendor/` and set `ZD_R600_BL7` to its basename. Leave that
+setting empty for the signed-FSI 10.1–10.3 releases.
+
+The one-shot `zd1200-prepare` service reads `vendor/` read-only. It detects the
+exact release from the full input SHA-256, decrypts and validates locally,
+creates the controller/AP runtime files in the `zd1200-runtime` named volume,
+then exits. Compose starts `zd1200` only after this succeeds. Neither the
+download nor derived vendor bytes are stored in Docker image layers.
+
+Subsequent `docker compose up -d` calls verify the same input fingerprint and
+return immediately. To deliberately replace the controller download or R600
+override, first stop the stack and remove only its runtime volume, then start
+again:
 
 ```sh
-RELEASE_ID=zd1200_10_2_1_0_232 ./prepare-vendor-image.sh \
-  /absolute/path/to/zd1200_10.2.1.0.232.ap_10.2.1.0.232.img
+docker compose down
+docker volume rm "$(grep '^ZD_RUNTIME_VOLUME=' .env | cut -d= -f2)"
+docker compose up -d --build
 ```
+
+If `ZD_RUNTIME_VOLUME` is not set, remove `zd1200-runtime` instead. This does
+not remove the separately named `zd1200-state` volume; remove that too only
+when a factory-reset controller state is intended.
 
 `run-zd1200-lab.sh` invokes the generalized binary patcher when it builds
 `image/bzImage.patched`. The default invocation preserves the former
@@ -108,6 +125,8 @@ python3 verify_release_archive.py /path/to/zd1200_10.5.1.0.282.ap_10.5.1.0.282.i
 
 It verifies the exact archive SHA-256, TAR path/link safety, required layout,
 and expected vendor metadata without extracting or modifying the archive.
+
+## Advanced: standalone bundle builder
 
 For any recognized release, the local bundle builder is:
 
@@ -200,9 +219,11 @@ already-patched signature to occur exactly once, rejects mixed-artifact rule
 sets, checks for overlapping writes, and verifies all patched signatures before
 writing the output. Reapplying a patch is idempotent.
 
-`ZD_IMAGE_DIR` in `.env` defaults to `./image`. Set it to an external absolute
-path if the large, generated files should live elsewhere. `.env`, `image/`, VM
-disks, logs and state are excluded by `.gitignore`.
+The prepared vendor-derived runtime lives in the named
+`ZD_RUNTIME_VOLUME` (`zd1200-runtime` by default). The separate named
+`ZD_STATE_VOLUME` holds controller configuration and persists across normal
+container rebuilds. `.env`, `vendor/`, generated images, VM disks, logs and
+state are excluded by `.gitignore`.
 
 For a physical Ethernet attachment, install the bridge helper and choose one
 of the profiles below. The controller is a factory appliance on first boot;
