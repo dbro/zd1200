@@ -37,11 +37,9 @@ services:
       MEMORY_MB: "2048"
       NETWORK_MODE: tap
       TAP_IF: ${ZD_TAP_IF:-tap-zd}
-      # The host bridge has no IP, so readiness is checked from the LAN.
-      WEB_PROBE: ${ZD_WEB_PROBE:-off}
-      # Optional informational address (and required only if WEB_PROBE=on).
-      # It does not configure the guest; use the ZD wizard for that.
-      GUEST_IP: ${ZD_GUEST_IP:-}
+      # `auto` disables HTTP probing for the normal TAP network and enables it
+      # for user-mode networking. Guest addressing belongs to the ZD wizard.
+      WEB_PROBE: ${ZD_WEB_PROBE:-auto}
       # Optional board identity override. Set both values, or leave both empty
       # to generate and retain a unique locally administered identity.
       ZD_SERIAL: ${ZD_SERIAL:-}

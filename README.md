@@ -1,238 +1,78 @@
-# Virtual ZoneDirector 1200 lab port
+# Virtual ZoneDirector 1200
 
-This project boots the x86 ZoneDirector 1200 software in QEMU/KVM and exposes
-it through a TAP-backed Ethernet interface. It is an experimental, unsupported
-lab port; it is not affiliated with or endorsed by Ruckus.
+This project runs Ruckus ZoneDirector 1200 software in a local QEMU virtual
+machine so it can manage real Ruckus access points without a
+physical ZD1200 appliance. It is intended for owners of compatible APs who
+have legitimately obtained a ZoneDirector software download and want a
+repeatable lab, replacement-controller, compatibility, or recovery setup.
 
-The supported-host policy, browser-builder design, release matrix, validation
-gates, and public-beta milestones are tracked in [ROADMAP.md](ROADMAP.md).
-The source/binary boundary and release-gated diagnostic payload inventory are
-tracked in [PROVENANCE.md](PROVENANCE.md).
-The physical-AP acceptance and regression procedure is in
-[VALIDATION.md](VALIDATION.md).
+This is an experimental community project, not a Ruckus product. It does not
+include Ruckus software, firmware, keys, or licenses; you must provide those
+yourself and remain responsible for complying with the Ruckus terms.
 
-## Firmware and licensing boundary
+## Recommended hardware
 
-This repository intentionally contains **no Ruckus binaries, firmware, root
-filesystems, keys, or AP images**. Obtain a matching ZD1200 package yourself
-from Ruckus Support and ensure that your download, decryption and use comply
-with the applicable terms. Exact builds are recognized only by their manifest
-hash and metadata, never by a filename alone.
+- A Linux x86-64 Docker host.
+- A dedicated USB Ethernet adapter.
+- **10.5.1.0.282**, the recommended controller release. Its vendor target list
+  includes C110, H320, H510, R310, R320, R500, R510, R550, R600, R610, R650,
+  R710, R720, R730, R750, R850, R350, H550, H350, E510, T300, T300e, T301n,
+  T301s, T310c, T310d, T310n, T310s, T610, T610s, T710, T710s, T750, T750SE,
+  T350c, T350d, and T350se. Check the Ruckus release documentation for your
+  AP's exact support status.
+- An older ZD release if you need legacy models such as the R700 or H500; see
+  [Choose a ZoneDirector release](#choose-a-zonedirector-release).
 
-| Exact build | Status | Bench evidence |
-| --- | --- | --- |
-| 10.5.1.0.282 | known | controller, R600 adoption, HTTPS and legacy FTP delivery validated |
-| 10.3.1.0.42 | experimental | controller, R600 signed FSI delivery over FTP, and AP `RUN` validated |
-| 10.2.1.0.232 | experimental | controller, R600 ISI adoption, signed FSI delivery, and AP `RUN` validated |
-| 10.1.2.0.318 | experimental | controller, R600 ISI adoption, legacy FTP delivery, FSI boot, and AP `RUN` validated |
+### 1. Check the host requirements
 
-The included [MIT License](LICENSE) applies only to this repository's original
-glue code and documentation. It grants no rights to Ruckus materials.
+- Linux x86-64 with Docker Engine, Docker Compose, and KVM available at
+  `/dev/kvm`.
+- One Ethernet adapter that can be dedicated to the controller/AP network. Do
+  not use the adapter that carries the host's normal Internet/default route.
+- A management computer on the same isolated switch, plus the APs to manage.
 
-Before a release, run `python3 check_repository_hygiene.py`. It rejects tracked
-firmware/archive formats, private-key markers, and the formerly unprovenanced
-diagnostic payload paths.
+Linux ARM64 is experimental. macOS and Windows Docker Desktop are not
+supported for physical AP management because this project has no validated
+equivalent to the required Linux TAP/bridge networking.
 
-Legacy TAC decryption is performed locally with an adapted, attributed
-[aioruckus](https://github.com/ms264556/aioruckus) BSD-0-Clause
-implementation; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+### 2. Download the controller software and create `.env`
 
-The Compose preparation service verifies the encrypted input hash when
-applicable, then verifies the decrypted archive identity, safe TAR layout and
-links, vendor metadata, and vendor kernel/rootfs MD5 values before extracting
-and transforming it. Generated output is ignored by Git and must never be
-committed.
+ZoneDirector software is available for download on the Ruckus website, and
+requires account registration.
 
-## Prerequisites
-
-- x86_64 Linux host with KVM (`/dev/kvm`) and Docker Compose. This is the
-  validated host target; ARM64 is experimental because physical-AP validation
-  has not yet been performed on that architecture.
-- A Layer-2 path for the guest if it will manage real APs. The recommended
-  dedicated-adapter profile keeps the host unnumbered on its adapter, bridge,
-  and TAP interface. An existing-host-bridge profile is available for an
-  intentionally shared LAN.
-- Docker handles local decryption, validation, extraction, patching, and the
-  required preparation tools. The host needs only Docker Compose plus the
-  separate Linux bridge helper prerequisites when physical AP networking is
-  wanted.
-
-## One-command local installation
+Clone this repository, create a `vendor/` directory, and copy your original
+ZD1200 download into it. Do not commit that directory.
 
 ```sh
-mkdir -p vendor
-# Copy the Ruckus ZD download into vendor/.
+git clone https://github.com/dbro/zd1200.git
+cd zd1200
+git switch public-release-candidate
+mkdir vendor
+# Copy your Ruckus ZD1200 software download into ./vendor/
 cp .env.example .env
-docker compose up -d --build
 ```
 
-Set `ZD_VENDOR_ARCHIVE` in `.env` to the basename of the downloaded file in
-`vendor/` (or set `ZD_VENDOR_DIR` to an existing directory). For a 10.5.1
-R600 mesh-repair deployment, no additional AP image is required: the
-preparation service builds the patched unsigned R600 payload directly from the
-selected ZD download. The 10.1–10.3 scoped releases are left unmodified
-because this receive-path bug is not present there.
+Now edit `.env`. The only required change is `ZD_VENDOR_ARCHIVE`: set it to
+the exact filename you placed in `vendor/`. Other options include enabling
+a root shell and other conveniences.
 
-The one-shot `zd1200-prepare` service reads `vendor/` read-only. It detects the
-exact release from the full input SHA-256, decrypts and validates locally,
-creates the controller/AP runtime files in the `zd1200-runtime` named volume,
-then exits. Compose starts `zd1200` only after this succeeds. Neither the
-download nor derived vendor bytes are stored in Docker image layers.
-During the first Docker build, Docker fetches and compiles a pinned public GPL
-source revision of the historical LZMA SquashFS tools needed only for that
-10.5.1 R600 repack; see `THIRD_PARTY_NOTICES.md`.
+```ini
+# Example for the recommended release. Use the actual filename you downloaded.
+ZD_VENDOR_ARCHIVE=zd1200_10.5.1.0.282.ap_10.5.1.0.282.img
 
-Subsequent `docker compose up -d` calls verify the same input fingerprint and
-return immediately. To deliberately replace the controller download, first
-stop the stack and remove only its runtime volume, then start again:
+# Keep this as tap-zd unless you deliberately changed the bridge-helper config.
+ZD_TAP_IF=tap-zd
 
-```sh
-docker compose down
-docker volume rm "$(grep '^ZD_RUNTIME_VOLUME=' .env | cut -d= -f2)"
-docker compose up -d --build
+# Optional: leave both commented out to generate a persistent local identity.
+# If you set one, set both before the first start.
+# ZD_SERIAL=123456000789
+# ZD_MAC1=02:52:54:12:00:01
 ```
 
-If `ZD_RUNTIME_VOLUME` is not set, remove `zd1200-runtime` instead. This does
-not remove the separately named `zd1200-state` volume; remove that too only
-when a factory-reset controller state is intended.
+### 3. Attach the dedicated adapter
 
-`run-zd1200-lab.sh` invokes the generalized binary patcher when it builds
-`image/bzImage.patched`. The default invocation preserves the former
-`patch-kernel.py` behavior:
-
-```sh
-python3 patch_binary_artifact.py
-```
-
-## Generalized binary patcher
-
-Binary matching and container handling live in `patch_binary_artifact.py`.
-The reusable artifact IDs and patch definitions live in the versioned,
-language-neutral `binary_patch_catalog.json`; `binary_patch_catalog.py` is its
-small Python loader. Every patch names an artifact ID, so all patches for one
-payload share its extraction and rebuild handler and cannot accidentally be
-mixed with patches for another payload. The accompanying JSON Schema is kept
-in `binary_patch_catalog.schema.json` for the future browser/TypeScript tool.
-
-Exact vendor-download identification is deliberately separate in
-`release_manifest.json` (with `release_manifest.schema.json` and a Python
-loader). It records only hashes, signed metadata expectations, archive layout,
-feature state, and applicable artifact IDs—not vendor bytes. A release must be
-recognized by this manifest before the bundle builder can process it.
-
-The current read-only preflight for an already-decrypted archive is:
-
-```sh
-python3 verify_release_archive.py /path/to/zd1200_10.5.1.0.282.ap_10.5.1.0.282.img.tgz
-```
-
-It verifies the exact archive SHA-256, TAR path/link safety, required layout,
-and expected vendor metadata without extracting or modifying the archive.
-
-## Advanced: standalone bundle builder
-
-For any recognized release, the local bundle builder is:
-
-```sh
-python3 build_zd1200_bundle.py \
-  /path/to/zd1200_10.5.1.0.282.ap_10.5.1.0.282.img \
-  /path/to/zd1200-10.5.1.0.282-bundle.zip
-```
-
-The input hash selects its exact manifest automatically. You may pass the
-exact manifest ID only to assert the release you expect, for example:
-
-```sh
-python3 build_zd1200_bundle.py \
-  /path/to/zd1200_10.2.1.0.232.ap_10.2.1.0.232.img \
-  /path/to/zd1200-10.2.1.0.232-bundle.zip \
-  --release zd1200_10_2_1_0_232
-```
-
-The ZIP contains the locally transformed controller image, Docker/runtime
-source, `README-FIRST.md`, and `build-report.json`. It does not include the
-original encrypted input. A standalone build without AP-repack options reports
-the shared `ap-11n-scorpion` payload as unpatched. Compose automatically
-repackages and repairs that payload only for the exact 10.5.1 R600 release;
-older scoped releases report that the repair is not required. The transformed
-firmware artifacts are reproducible for a fixed input and options. The final
-ZIP deliberately receives a fresh self-signed bootstrap TLS identity, so its
-overall ZIP hash is not expected to repeat across separate builds.
-
-The current catalog defines:
-
-```text
-zd1200_kernel_elf  ELF32 x86 kernel inside the vendor bzImage gzip member
-ap_11n_scorpion_wlan_ko  raw ELF32 big-endian MIPS shared platform wlan.ko
-```
-
-The ZD1200 handler locates and decompresses the kernel ELF, applies all six
-registered patches, recompresses it, pads the gzip member to its original
-length, and splices it back without moving the vendor loader tail. Defaults are
-compatible with the lab launcher:
-
-```sh
-python3 patch_binary_artifact.py \
-  --artifact zd1200_kernel_elf \
-  --in image/bzImage \
-  --out image/bzImage.patched
-```
-
-Those rules suppress only the physical NAR5520 watchdog startup/worker paths
-and replace the appliance-specific guest reset entry point with QEMU's i8042
-system-reset command. They do not disable the kernel's general halt path or
-use a host-side log watcher to manufacture a reboot.
-
-The vendor loader reserves a fixed-size gzip member. To keep that boundary
-unchanged on especially tight releases, the catalog clears a name in the ELF
-section-name table, which is not mapped by any loadable program segment and is
-not used by the running kernel.
-
-The `ap-11n-scorpion` rule operates on an already-extracted module; BL7 filesystem
-extraction and rebuilding remain a separate packaging step. For the exact
-10.5.1 R600 payload, the automatic builder validates the signed header and
-payload, removes its signature trailer, converts it to unsigned UI, then
-applies the module repair. This is an explicit local conversion, not signature
-validation or preservation. Standalone SquashFS extraction/rebuild and module
-integration are also available when the matching GPL tools are installed:
-
-```sh
-python3 patch_r600_bl7.py \
-  /path/to/r600-input.bl7 /path/to/r600-patched.bl7 \
-  --unsquashfs /path/to/ruckus_ap_firmware_mod/bin/unsquashfs \
-  --mksquashfs /path/to/ruckus_ap_firmware_mod/bin/mksquashfs
-```
-
-The command patches exactly one `lib/modules/*/net/wlan.ko`, writes a new
-unsigned image, and leaves the input untouched. It accepts a signed input only
-for the explicit UI conversion above; it never writes a modified signed image.
-The bundle builder enables that path only for the exact 10.5.1 release needing
-the repair. R600 is the validated model; R500, R310, T300, T300e, T301n, and
-T301s are patched only when they resolve to the exact same vendor BL7 and are
-explicitly reported as **experimental**.
-
-```sh
-python3 patch_binary_artifact.py \
-  --artifact ap_11n_scorpion_wlan_ko \
-  --in /path/to/wlan.ko \
-  --out /path/to/wlan.ko.patched
-```
-
-Signatures support `??` wildcard bytes. The patcher requires each original or
-already-patched signature to occur exactly once, rejects mixed-artifact rule
-sets, checks for overlapping writes, and verifies all patched signatures before
-writing the output. Reapplying a patch is idempotent.
-
-The prepared vendor-derived runtime lives in the named
-`ZD_RUNTIME_VOLUME` (`zd1200-runtime` by default). The separate named
-`ZD_STATE_VOLUME` holds controller configuration and persists across normal
-container rebuilds. `.env`, `vendor/`, generated images, VM disks, logs and
-state are excluded by `.gitignore`.
-
-For a physical Ethernet attachment, install the bridge helper and choose one
-of the profiles below. The controller is a factory appliance on first boot;
-use an isolated lab unless you have deliberately prepared a shared management
-LAN.
+Install and configure the bridge helper. Substitute the Ethernet interface
+name and MAC address of the adapter that is connected to the isolated switch.
 
 ```sh
 sudo install -m 0755 host/zd1200-bridge /usr/local/sbin/zd1200-bridge
@@ -240,29 +80,168 @@ sudo install -m 0644 host/zd1200-bridge.service /etc/systemd/system/
 sudo install -m 0644 host/zd1200-bridge-watch.service /etc/systemd/system/
 sudo install -m 0600 host/zd1200-bridge.env.example /etc/default/zd1200-bridge
 sudoedit /etc/default/zd1200-bridge
-sudo systemctl daemon-reload
 ```
 
-### Dedicated adapter (recommended)
+Set these values in `/etc/default/zd1200-bridge`:
 
-In `/etc/default/zd1200-bridge`, keep `ZD_NETWORK_PROFILE=dedicated`, set
-`ZD_USB_IF` to the dedicated Ethernet adapter and set `ZD_USB_MAC` to its MAC.
-The helper creates the unnumbered `br-zd` and `tap-zd` path, and refuses to
-start if either the selected adapter or `br-zd` carries the host's default
-route. It also recreates that path after a USB unplug/replug.
+```ini
+ZD_NETWORK_PROFILE=dedicated
+ZD_USB_IF=enx0123456789ab
+ZD_USB_MAC=01:23:45:67:89:ab
+ZD_TAP_IF=tap-zd
+```
+
+The helper refuses an adapter or bridge with the host's default route. Check
+the proposed setup, then enable it:
 
 ```sh
+sudo systemctl daemon-reload
 sudo /usr/local/sbin/zd1200-bridge check
 sudo systemctl enable --now zd1200-bridge.service
 sudo systemctl enable --now zd1200-bridge-watch.service
 ```
 
-### Existing Linux bridge (advanced shared-LAN profile)
+### 4. Build and start the controller
 
-Use this only when the Docker host already has a Linux bridge, such as `br0`,
-created and managed by its network configuration. That bridge may retain the
-host address and default route. Set the following in
-`/etc/default/zd1200-bridge` and leave `ZD_USB_IF` and `ZD_USB_MAC` unset:
+```sh
+docker compose up -d --build
+docker compose logs -f
+```
+
+On its first build, Docker locally decrypts and validates your download,
+prepares the controller runtime, and starts QEMU. It also builds the patched
+unsigned R600 AP image only for 10.5.1. Your original download stays read-only
+in `vendor/` and is never copied into a Docker image layer.
+
+Without DHCP on the isolated network, browse to
+[`https://192.168.0.2/`](https://192.168.0.2/) from the management computer.
+First give that computer a temporary static address such as `192.168.0.3/24`
+on its Ethernet adapter; no gateway is needed for this step.
+Complete the ZoneDirector wizard and assign the controller a permanent static
+address suitable for the isolated network. Then restart the controller once:
+
+```sh
+docker compose restart zd1200
+```
+
+Log in at `https://<your-controller-address>/admin10/login.jsp` and adopt an
+AP. The full physical-AP acceptance procedure is in
+[VALIDATION.md](VALIDATION.md).
+
+## Choose a ZoneDirector release
+
+Only the exact builds below are recognized. Set `ZD_VENDOR_ARCHIVE` to the
+filename of the matching download; the preparation step identifies the build
+by SHA-256, not by filename alone.
+
+| Choose this build | Choose it when | Important note |
+| --- | --- | --- |
+| **10.5.1.0.282** | You want the recommended, newest supported controller path. | Automatically creates the repaired R600 mesh image. R600 is validated; related shared-payload models remain experimental. |
+| **10.3.1.0.42** | You need the final ZD release family that supports the R700. | |
+| **10.2.1.0.232** | You need its historical/vendor unsigned-image compatibility behavior. | This is distinct from the project-generated unsigned R600 image used only by the 10.5.1 mesh repair. |
+| **10.1.2.0.318** | You need H500 support. | |
+
+The three older builds are compatibility paths, not upgrades over 10.5.1.
+Their AP firmware is delivered as signed FSI images; they do not need or
+receive the 10.5.1 mesh repair.
+
+
+## Fixing mesh operation for R600 and experimental shared-payload APs
+
+ZoneDirector version 10.5.1.0.276 introduced a mesh receive-path bug for some
+AP models. A wired "Root" AP (RAP) can appear normal while a wireless "Mesh"
+AP (MAP) shows as connected but does not pass ordinary Layer-2 traffic between
+the wired and mesh sides. Typical signs are unresolved ARP entries and failed
+bidirectional management pings; a static management address does not prevent
+the fault.
+
+This bug exists in the software version recommended here (10.5.1.0.282) that
+is downloadable from the Ruckus website. This project applies a fix for this
+bug during the installation process.
+
+**R600 is the validated repaired model.** R500, R310, T300, T300e, T301n, and
+T301s are experimental targets only when the selected ZD payload resolves to
+the exact same shared firmware image. Validate a specific model before relying
+on the repair in a production-like deployment.
+
+**IMPORTANT! You must manually prepare these APs to receive UNSIGNED firmware
+when running ZD version 10.5.1.0.282 !**
+
+An AP currently running a fully signed (**FSI**) image will reject the patched
+unsigned (**UI**) image used by the 10.5.1 path. Before adopting one of these
+APs to the patched 10.5.1 controller, install a compatible intermediate-signed
+(**ISI**) image for that exact AP model through its standalone upgrade
+interface. For example, an R600 can use the standalone/ISI release
+`110.0.0.0.675`; confirm the exact filename and model compatibility from the
+legitimate Ruckus download.
+An AP already running an ISI or UI image does not need this preparation.
+Never install firmware for a different model.
+
+Steps to flash ISI firmware on an AP:
+* download the ISI image from Ruckus website and save it on your laptop
+* isolate the AP from the network, and connect it to your laptop with a USB
+ethernet adapter set up with a static IP address 192.168.0.xxx
+* factory reset the AP and let it reboot
+* visit the AP's admin webpage at 192.168.0.1 and login with the default
+username "super" and password "sp-admin"
+* update the firmware using the local method and select the ISI image
+saved on your laptop
+* after the AP restarts, visit 192.168.0.1 and check that it runs the
+ISI version. Assign its IP as needed (DHCP or static) to connect with
+the ZoneDirector.
+* Let the ZD discover, adopt, accept, and upgrade the firmware to the
+unsigned+patched version.
+
+## Everyday operation
+
+```sh
+# Start or update after changing Compose/project code.
+docker compose up -d --build
+
+# Inspect startup and guest messages.
+docker compose logs -f
+
+# Stop the controller without deleting its configuration.
+docker compose down
+
+# Check whether Docker considers the guest ready.
+docker compose ps
+```
+
+The named state volume retains the controller configuration, AP database,
+generated serial number, and generated MAC address. Back it up before making
+large configuration changes. To factory-reset the virtual controller, stop the
+stack and remove the state volume named by `ZD_STATE_VOLUME`.
+
+To deliberately use a different controller download, stop the stack and
+remove only the runtime volume named by `ZD_RUNTIME_VOLUME`; leave the state
+volume intact unless you also want a factory reset.
+
+```sh
+docker compose down
+docker volume rm "$(grep '^ZD_RUNTIME_VOLUME=' .env | cut -d= -f2)"
+docker compose up -d --build
+```
+
+If the variable is absent, the default runtime volume is `zd1200-runtime`.
+
+### Optional `.env` settings
+
+| Setting | Purpose |
+| --- | --- |
+| `ZD_SERIAL` and `ZD_MAC1` | Set a chosen, stable controller identity. Set both before the first start, or leave both unset for a generated persistent identity. |
+| `ZD_WEB_PROBE` | Controls launcher readiness only. Leave it at `auto`: it disables in-container HTTP probing for the normal TAP network and enables a local probe for user-mode networking. `on` is not supported with TAP. |
+| `ZD_ENABLE_ECDSA_SSH=1` | Adds an ECDSA host key to the ordinary ZoneDirector administrative SSH service while retaining RSA. |
+| `ZD_ENABLE_ROOT_CLI=1` | Enables a local root shell through the authenticated ZD CLI script hook. It does not add a network listener. |
+| `ZD_ROOT_SSH_PUBLIC_KEY` | Enables public-key-only root SSH on TCP 2222 for 10.5.1.0.282. RSA and ECDSA keys are accepted; Ed25519 is not. |
+| `ZD_SUPPORT_ENTITLEMENT_END` | Creates a finite support-entitlement record ending on the supplied `YYYY-MM-DD` date. |
+
+## Networking choices and recovery
+
+The dedicated-adapter profile above is recommended because it keeps the
+Docker host unnumbered on the controller/AP network. The bridge helper can
+also attach `tap-zd` to an existing Linux bridge for an intentionally shared
+management LAN:
 
 ```ini
 ZD_NETWORK_PROFILE=existing-bridge
@@ -270,153 +249,69 @@ ZD_BRIDGE_IF=br0
 ZD_TAP_IF=tap-zd
 ```
 
-The helper only creates/removes and attaches `tap-zd`; it never changes the
-existing bridge, its member NICs, addresses, routes, STP settings, or default
-route. Do not enable `zd1200-bridge-watch.service` for this profile: there is
-no dedicated USB adapter to watch.
+This advanced profile never changes the existing bridge's members, addresses,
+routes, or default route. Do not enable `zd1200-bridge-watch.service` for it.
+Do not put an unconfigured factory controller on a production LAN.
+
+To remove the dedicated network path, stop Compose and both helper services.
+For the existing-bridge profile, stop Compose and only
+`zd1200-bridge.service`; the pre-existing bridge is left untouched. Detailed
+recovery and AP-adoption instructions are in [VALIDATION.md](VALIDATION.md).
+
+## Troubleshooting
+
+- **`Missing image/bootinitramfs.gz`** — the preparation service did not
+  complete. Run `docker compose logs zd1200-prepare` and correct the archive
+  filename or unsupported-build error before starting again.
+- **The setup wizard does not appear at `192.168.0.2`** — make sure the
+  management computer is connected to the isolated switch and has an address
+  in the same temporary subnet. Check `docker compose logs -f` and the bridge
+  helper with `sudo /usr/local/sbin/zd1200-bridge check`.
+- **An AP loops during a 10.5.1 update** — confirm that it was first moved from
+  FSI to a compatible ISI image. See “Fixing mesh operation for R600 and
+  experimental shared-payload APs” above.
+- **The dedicated adapter does not recover after reconnecting** — verify its
+  MAC still matches `ZD_USB_MAC`, then review
+  `systemctl status zd1200-bridge-watch.service`.
+
+## Advanced and developer reference
+
+The Docker workflow is the normal installation method. The repository also
+contains standalone local tools for inspecting or building a ZIP from a
+recognized vendor download:
 
 ```sh
-sudo /usr/local/sbin/zd1200-bridge check
-sudo systemctl enable --now zd1200-bridge.service
+python3 verify_release_archive.py /path/to/decrypted-zd1200.img.tgz
+python3 build_zd1200_bundle.py /path/to/zd1200.img /path/to/bundle.zip
 ```
 
-Before using the 10.5.1 unsigned mesh-repair path with an ap-11n-scorpion
-model, read the [one-time AP firmware prerequisite](VALIDATION.md#one-time-ap-firmware-prerequisite-ap-11n-scorpion-models).
-An AP still running FSI firmware must first be manually upgraded to a
-compatible ISI image for that exact model; otherwise it will reject the
-unsigned patched UI image. APs already running UI or ISI firmware do not need
-this preparation. The 10.1–10.3 scoped releases deliver signed FSI firmware
-and do not use this unsigned-image prerequisite. The automated AP-payload
-patcher is currently validated for R600 only.
+`build_zd1200_bundle.py` accepts either the original encrypted download or a
+recognized decrypted archive. The generated ZIP includes transformed runtime
+files but not the original encrypted input. Its overall hash changes between
+builds because it receives a fresh bootstrap TLS identity.
 
-The dedicated profile refuses to repurpose an interface carrying the host
-default route. Set `ZD_USB_MAC` as an additional guard. Its USB adapter,
-bridge, and TAP remain unnumbered, and the watcher reattaches only that
-configured adapter after an unplug/replug. In the existing-bridge profile,
-the operator-owned bridge retains its host networking and only the TAP is
-managed by this project.
+The artifact-specific patch definitions are in `binary_patch_catalog.json` and
+the exact supported-download manifests are in `release_manifest.json`. The
+full validation matrix, known limitations, test evidence, and roadmap are in
+[VALIDATION.md](VALIDATION.md), [PROVENANCE.md](PROVENANCE.md), and
+[ROADMAP.md](ROADMAP.md). Run `python3 check_repository_hygiene.py` before
+contributing or publishing changes.
 
-To remove the dedicated path, stop Compose and both services; the helper
-detaches the adapter and removes `br-zd` and `tap-zd`. To remove the
-existing-bridge path, stop Compose and `zd1200-bridge.service`; only `tap-zd`
-is removed and the pre-existing bridge is left untouched. See
-[`VALIDATION.md`](VALIDATION.md#network-profiles-recovery-and-safety) for the
-full recovery checks.
+## Security and licensing
 
-On this factory ZD1200 build, use `https://192.168.0.2/` for the initial setup
-wizard when no DHCP server is present. Set the desired permanent address in the
-wizard (for example, `192.168.222.10/24` for the isolated lab). A temporary,
-isolated DHCP reservation remains an optional fallback, not a standard
-requirement. Do not place the factory guest on an untrusted or production LAN.
-If desired, set `ZD_GUEST_IP` in `.env` after the wizard; it only makes the
-startup status line show the known address and does not configure the guest.
+This is not a hardened appliance. Keep the controller, its web UI, SSH, FTP,
+and the Docker host API off untrusted networks. Use a dedicated management VLAN
+and firewall rules. Do not commit `.env`, `vendor/`, generated runtime files,
+state volumes, captures, passwords, or private keys.
 
-`ZD_WEB_PROBE` controls only launcher readiness behavior; it never assigns a
-guest address. `off` declares startup without an in-container HTTP probe,
-which is appropriate for the normal TAP/physical-LAN configuration. `on`
-probes the configured `ZD_GUEST_IP`. `auto` selects `off` for TAP networking
-and `on` for user-mode networking. The shipped TAP profile uses `off`.
-
-After the first factory-wizard completion, restart the container once. The
-vendor administrative SSH service can then generate its persistent host key.
-By default it offers its vendor RSA host key only. Set
-`ZD_ENABLE_ECDSA_SSH=1` in `.env` before starting the container to retain RSA
-and offer an additional ECDSA host key on that same administrative SSH
-listener. The option is reversible: setting it back to `0` restores the vendor
-launcher on the next boot. It changes host-key compatibility only; it does not
-enable root access or weaken account authentication.
-
-`ZD_ENABLE_ROOT_CLI=1` is a separate, deliberately opt-in lab/recovery option.
-It uses the vendor CLI script hook and adds no listener or SSH account. An
-authenticated CLI administrator can then enter `enable`, `debug`, `script`, and
-`exec .root.sh` to obtain a local root shell. Disable the setting and restart
-to remove only this project's hook.
-
-For an opt-in root SSH shell on TCP 2222, set `ZD_ROOT_SSH_PUBLIC_KEY` to one
-RSA or ECDSA OpenSSH public-key line before starting the container. This uses
-the vendor Dropbear binary with password authentication disabled and leaves the
-ordinary administrative SSH service untouched. It is currently enabled only
-for the 10.5.1.0.282 manifest; Ed25519 keys are rejected because that vendor
-Dropbear build does not support them.
-
-Set `ZD_SUPPORT_ENTITLEMENT_END=YYYY-MM-DD` to create an enabled, finite support
-entitlement record before the controller starts; the date must be later than
-`2010-01-01`. Leave it unset to preserve the vendor support-entitlement state.
-For a long-lived isolated lab, `2100-01-01` is a practical value.
-
-### Health status
-
-Docker reports the container as healthy only after the emulated guest has a
-running `webs` process and an HTTP or HTTPS listening socket. This is stronger
-than checking that QEMU exists: a guest which has shut down or is stuck during
-a reboot becomes unhealthy. The physical-LAN TAP bridge remains unnumbered;
-the check uses a guest-generated serial readiness marker rather than assigning
-an otherwise unnecessary management address to the Docker host.
-No third-party diagnostic SSH payload is included in source bundles. The only
-supported opt-in root SSH path is the vendor-Dropbear key option described
-above; it requires an operator-provided public key.
-
-## Runtime notes
-
-- Keep `KERNEL_EXTRA: nohz=off`. The 2.6.32 guest's tickless-idle path spins a
-  host CPU while idle; this option reduced observed KVM QEMU CPU use from about
-  25% to about 2% of one host CPU.
-- `CPU_LIMIT` is intentionally absent for KVM. The old duty-cycle limiter only
-  added SIGSTOP/SIGCONT pauses and delayed useful work. `nice -n 10` remains
-  and only lowers scheduling priority under contention.
-- Each new state volume receives a generated 12-digit serial number and a
-  locally administered unicast MAC; both are retained in
-  `board-identity.env` within that volume. The synthetic board data and QEMU
-  NIC use the same base MAC. To use a chosen identity, set both `ZD_SERIAL`
-  and `ZD_MAC1` before first start; MAC2 is derived as MAC1 + 1.
-- The generated state volume contains controller configuration and AP state.
-  Back it up before experiments; deleting it returns the VM to factory setup.
-
-## Security warning
-
-This is a lab proof of concept, not a hardened appliance. The boot handoff
-seeds legacy Unix account hashes so the factory setup and recovery paths work.
-Treat those credentials as known to anyone who can read this repository.
-No diagnostic SSH key is included; keep any operator-provided public key out
-of Git and use a dedicated, isolated lab network.
-Do not expose the VM's HTTPS, SSH, FTP, management network, or host Docker API
-to untrusted networks. Use a dedicated management VLAN and firewall rules.
-
-## Repository contents
-
-The public repository contains source and documentation only. Its principal
-components are:
-
-- Compose/runtime launchers: `Dockerfile`, `docker-compose.yml`,
-  `prepare-compose-runtime.sh`, `run-zd1200-web.sh`, and the initrd/QEMU
-  helpers.
-- Local transformation tools: `build_zd1200_bundle.py`,
-  `patch_binary_artifact.py`, `patch_r600_bl7.py`, `ruckus_bl7.py`, and the
-  release/archive verification tools.
-- Versioned metadata: `binary_patch_catalog.json`, `release_manifest.json`,
-  and their schemas/loaders.
-- Host networking: `host/zd1200-bridge` and its dedicated/existing-bridge
-  systemd units and configuration template.
-- Runtime identity and optional payload helpers: `zd_identity.py`,
-  `write-boarddata.py`, and `zd_root_ssh.py`.
-- Verification and policy: `tests/`, `check_repository_hygiene.py`,
-  `PROVENANCE.md`, `VALIDATION.md`, `ROADMAP.md`, and
-  `THIRD_PARTY_NOTICES.md`.
-
-`limit-process-cpu.py` is retained only for the automatic TCG fallback, not
-normal KVM operation.
-
-## Optional future improvements
-
-1. Replace the fixed seeded Unix password hashes with per-deployment secrets,
-   but only after confirming that factory setup, recovery, and Dropbear flows
-   remain recoverable.
-2. Validate physical-AP operation on ARM64 Docker hosts.
-3. Validate the shared ap-11n-scorpion repair on each experimental model:
-   R500, R310, T300, T300e, T301n, and T301s.
+The repository's [MIT License](LICENSE) applies only to this project's glue
+code and documentation. It grants no rights to Ruckus material. The local TAC
+decryption implementation is derived from the permissively licensed
+[aioruckus](https://github.com/ms264556/aioruckus) project; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Known limitation
 
 Do not use the ZoneDirector web-upgrade workflow inside this VM. QEMU boots an
-external kernel and initramfs, so an in-guest upgrade would create a mixed
-version unless this port is updated and rebuilt for that release.
+external kernel and initramfs, so an in-guest upgrade creates a mixed version
+unless this project is updated and rebuilt for that exact release.

@@ -12,7 +12,6 @@ http_status=""
 http_port="${HTTP_PORT:-38080}"
 https_port="${HTTPS_PORT-38443}"
 network_mode="${NETWORK_MODE:-user}"
-guest_ip="${GUEST_IP:-}"
 web_probe="${WEB_PROBE:-auto}"
 state_dir="${STATE_DIR:-$work_dir}"
 synthetic_disk="${SYNTHETIC_DISK:-$state_dir/synthetic-cf.img}"
@@ -137,11 +136,8 @@ if ! [[ "$wait_seconds" =~ ^[0-9]+$ ]] || (( wait_seconds < 1 )); then
 fi
 if [ "$web_probe" = off ]; then
     echo "ZD1200 is starting with external web readiness checks."
-    if [ -n "$guest_ip" ]; then
-        echo "Expected guest management address: https://$guest_ip/"
-    else
-        echo "Factory management address: https://192.168.0.2/ (set a permanent address in the wizard)"
-    fi
+    echo "First setup without DHCP: https://192.168.0.2/"
+    echo "Set the permanent guest address in the ZoneDirector wizard."
     echo "The TAP bridge is intentionally unnumbered on the Docker host."
     ready=1
 elif [ -n "$cpu_limit" ]; then
@@ -152,10 +148,8 @@ else
     echo "Startup runs at full speed and has a ${wait_seconds}s readiness deadline."
 fi
 if [ "$web_probe" != off ]; then
-    if [ "$network_mode" = tap ] && [ -n "$guest_ip" ]; then
-        probe_base="https://$guest_ip"
-    elif [ "$network_mode" = tap ]; then
-        echo "GUEST_IP is required only when WEB_PROBE=on with NETWORK_MODE=tap." >&2
+    if [ "$network_mode" = tap ]; then
+        echo "WEB_PROBE=on is not supported with NETWORK_MODE=tap; use auto or off." >&2
         exit 2
     else
         probe_base="https://127.0.0.1:$https_port"
