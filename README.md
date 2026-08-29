@@ -45,7 +45,9 @@ committed.
 
 ## Prerequisites
 
-- x86_64 Linux host with KVM (`/dev/kvm`) and Docker Compose.
+- x86_64 Linux host with KVM (`/dev/kvm`) and Docker Compose. This is the
+  validated host target; ARM64 is experimental because physical-AP validation
+  has not yet been performed on that architecture.
 - A Layer-2 path for the guest if it will manage real APs. The recommended
   dedicated-adapter profile keeps the host unnumbered on its adapter, bridge,
   and TAP interface. An existing-host-bridge profile is available for an
@@ -53,8 +55,7 @@ committed.
 - Docker handles local decryption, validation, extraction, patching, and the
   required preparation tools. The host needs only Docker Compose plus the
   separate Linux bridge helper prerequisites when physical AP networking is
-  wanted. ARM64 remains experimental because no physical-AP validation host is
-  available.
+  wanted.
 
 ## One-command local installation
 
@@ -82,9 +83,8 @@ source revision of the historical LZMA SquashFS tools needed only for that
 10.5.1 R600 repack; see `THIRD_PARTY_NOTICES.md`.
 
 Subsequent `docker compose up -d` calls verify the same input fingerprint and
-return immediately. To deliberately replace the controller download or R600
-override, first stop the stack and remove only its runtime volume, then start
-again:
+return immediately. To deliberately replace the controller download, first
+stop the stack and remove only its runtime volume, then start again:
 
 ```sh
 docker compose down
@@ -118,8 +118,7 @@ Exact vendor-download identification is deliberately separate in
 `release_manifest.json` (with `release_manifest.schema.json` and a Python
 loader). It records only hashes, signed metadata expectations, archive layout,
 feature state, and applicable artifact IDs—not vendor bytes. A release must be
-recognized by this manifest before an eventual bundle builder can call it
-supported.
+recognized by this manifest before the bundle builder can process it.
 
 The current read-only preflight for an already-decrypted archive is:
 
@@ -152,12 +151,13 @@ python3 build_zd1200_bundle.py \
 
 The ZIP contains the locally transformed controller image, Docker/runtime
 source, `README-FIRST.md`, and `build-report.json`. It does not include the
-original encrypted input. The report explicitly marks the shared
-`ap-11n-scorpion` AP payload as unpatched until a BL7 repacker is selected.
-The transformed firmware artifacts are reproducible for a fixed input and
-options. The final ZIP deliberately receives a fresh self-signed bootstrap TLS
-identity, so its overall ZIP hash is not expected to repeat across separate
-builds.
+original encrypted input. A standalone build without AP-repack options reports
+the shared `ap-11n-scorpion` payload as unpatched. Compose automatically
+repackages and repairs that payload only for the exact 10.5.1 R600 release;
+older scoped releases report that the repair is not required. The transformed
+firmware artifacts are reproducible for a fixed input and options. The final
+ZIP deliberately receives a fresh self-signed bootstrap TLS identity, so its
+overall ZIP hash is not expected to repeat across separate builds.
 
 The current catalog defines:
 
@@ -280,13 +280,14 @@ sudo /usr/local/sbin/zd1200-bridge check
 sudo systemctl enable --now zd1200-bridge.service
 ```
 
-Before adopting an ap-11n-scorpion model, read the [one-time AP firmware
-prerequisite](VALIDATION.md#one-time-ap-firmware-prerequisite-ap-11n-scorpion-models).
+Before using the 10.5.1 unsigned mesh-repair path with an ap-11n-scorpion
+model, read the [one-time AP firmware prerequisite](VALIDATION.md#one-time-ap-firmware-prerequisite-ap-11n-scorpion-models).
 An AP still running FSI firmware must first be manually upgraded to a
 compatible ISI image for that exact model; otherwise it will reject the
-unsigned patched UI image delivered by this lab ZD. APs already running UI or
-ISI firmware do not need this preparation. The automated AP-payload patcher is
-currently validated for R600 only.
+unsigned patched UI image. APs already running UI or ISI firmware do not need
+this preparation. The 10.1–10.3 scoped releases deliver signed FSI firmware
+and do not use this unsigned-image prerequisite. The automated AP-payload
+patcher is currently validated for R600 only.
 
 The dedicated profile refuses to repurpose an interface carrying the host
 default route. Set `ZD_USB_MAC` as an additional guard. Its USB adapter,
@@ -309,6 +310,12 @@ isolated DHCP reservation remains an optional fallback, not a standard
 requirement. Do not place the factory guest on an untrusted or production LAN.
 If desired, set `ZD_GUEST_IP` in `.env` after the wizard; it only makes the
 startup status line show the known address and does not configure the guest.
+
+`ZD_WEB_PROBE` controls only launcher readiness behavior; it never assigns a
+guest address. `off` declares startup without an in-container HTTP probe,
+which is appropriate for the normal TAP/physical-LAN configuration. `on`
+probes the configured `ZD_GUEST_IP`. `auto` selects `off` for TAP networking
+and `on` for user-mode networking. The shipped TAP profile uses `off`.
 
 After the first factory-wizard completion, restart the container once. The
 vendor administrative SSH service can then generate its persistent host key.
@@ -377,37 +384,36 @@ to untrusted networks. Use a dedicated management VLAN and firewall rules.
 
 ## Repository contents
 
-The source-only public repository should contain these files:
+The public repository contains source and documentation only. Its principal
+components are:
 
-```text
-Dockerfile                    docker-compose.yml             .env.example
-boot-initrd-handoff           boot-initrd-init               boot-initrd-inittab
-make-boot-initrd.sh           make-runtime-initrd.sh         prepare-vendor-image.sh
-make-synthetic-cf.py          pivot-exec.S                   run-zd1200-qemu.sh
-run-zd1200-web.sh             zd-controller-wrapper.sh       zd-healthcheck.sh
-zd-memory-snapshot.sh
-zd1200-patch.gdb              limit-process-cpu.py            patch_binary_artifact.py
-binary_patch_catalog.py
-release_manifest.py             verify_release_archive.py
-host/zd1200-bridge            host/zd1200-bridge.service     host/zd1200-bridge.env.example
-README.md                     LICENSE                         .gitignore                     .dockerignore
-PROVENANCE.md                 ROADMAP.md                      VALIDATION.md
-THIRD_PARTY_NOTICES.md        ruckus_tac_decrypt.py
-build_zd1200_bundle.py
-```
+- Compose/runtime launchers: `Dockerfile`, `docker-compose.yml`,
+  `prepare-compose-runtime.sh`, `run-zd1200-web.sh`, and the initrd/QEMU
+  helpers.
+- Local transformation tools: `build_zd1200_bundle.py`,
+  `patch_binary_artifact.py`, `patch_r600_bl7.py`, `ruckus_bl7.py`, and the
+  release/archive verification tools.
+- Versioned metadata: `binary_patch_catalog.json`, `release_manifest.json`,
+  and their schemas/loaders.
+- Host networking: `host/zd1200-bridge` and its dedicated/existing-bridge
+  systemd units and configuration template.
+- Runtime identity and optional payload helpers: `zd_identity.py`,
+  `write-boarddata.py`, and `zd_root_ssh.py`.
+- Verification and policy: `tests/`, `check_repository_hygiene.py`,
+  `PROVENANCE.md`, `VALIDATION.md`, `ROADMAP.md`, and
+  `THIRD_PARTY_NOTICES.md`.
 
 `limit-process-cpu.py` is retained only for the automatic TCG fallback, not
 normal KVM operation.
 
 ## Optional future improvements
 
-1. Add a stable synthetic serial number if a blank value creates a practical
-   problem. [See these instructions for assigning serial number, MAC, etc](https://ms264556.net/ruckus/MigrateDeadZoneDirector#restore-your-old-serial-number-and-mac) (thank you, @ms264556!)
-2. Replace the fixed seeded Unix password hashes with per-deployment secrets,
-   but only after confirming the factory wizard, recovery, and Dropbear flows
+1. Replace the fixed seeded Unix password hashes with per-deployment secrets,
+   but only after confirming that factory setup, recovery, and Dropbear flows
    remain recoverable.
-3. Make the synthetic MAC configurable only after validating the corresponding
-   board-data behavior, so two lab instances can safely coexist.
+2. Validate physical-AP operation on ARM64 Docker hosts.
+3. Validate the shared ap-11n-scorpion repair on each experimental model:
+   R500, R310, T300, T300e, T301n, and T301s.
 
 ## Known limitation
 
