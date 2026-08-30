@@ -317,23 +317,28 @@ if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
 #!/bin/sh
 (
     output=/writable/zd1200-analytics/snapshot.json
-    temporary="$output.tmp.$$"
     database=/tmp/sqlited/statistic.db
     database_snapshot=/writable/zd1200-analytics/statistic.db
     mkdir -p /writable/zd1200-analytics
-    attempts=0
-    while [ "$attempts" -lt 60 ]; do
-        if [ -s "$database" ]; then
-            cp "$database" "$database_snapshot" 2>/dev/null || true
-            [ -s "$database_snapshot" ] \
-                && /usr/local/sbin/zd1200-analytics-snapshot > "$temporary" \
-                && mv -f "$temporary" "$output" && exit 0
+    while :; do
+        temporary="$output.tmp.$$"
+        attempts=0
+        while [ "$attempts" -lt 60 ]; do
+            if [ -s "$database" ]; then
+                cp "$database" "$database_snapshot" 2>/dev/null || true
+                [ -s "$database_snapshot" ] \
+                    && /usr/local/sbin/zd1200-analytics-snapshot > "$temporary" \
+                    && mv -f "$temporary" "$output" && break
+            fi
+            attempts=$((attempts + 1))
+            sleep 2
+        done
+        if [ ! -s "$output" ]; then
+            printf '{"status":"waiting","database_present":false}\n' > "$temporary"
+            mv -f "$temporary" "$output"
         fi
-        attempts=$((attempts + 1))
-        sleep 2
+        sleep 3600
     done
-    printf '{"status":"waiting","database_present":false}\n' > "$temporary"
-    mv -f "$temporary" "$output"
 ) &
 exit 0
 ZD_ANALYTICS_SNAPSHOT_INIT

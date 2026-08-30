@@ -73,17 +73,22 @@ The runtime initramfs installs `/admin10/zd1200-analytics.html` on every guest
 boot. A late, root-owned init script waits for `statistic.db`, copies it to a
 private file on the writable partition, runs a small statically linked i386
 helper against that stable copy, and atomically writes its JSON next to the
-copy. `/web/admin10/zd1200-analytics-snapshot.json` is a symlink to that JSON,
-so the page can fetch it from the same origin even though the main root
-filesystem is immutable. The copy is a transient input snapshot, not a new
-history database.
+copy. It refreshes the result once per hour, matching the source database's
+hourly cadence. `/web/admin10/zd1200-analytics-snapshot.json` is a symlink to
+that JSON, so the page can fetch it from the same origin even though the main
+root filesystem is immutable. The copy is a transient input snapshot, not a
+new history database.
 
 The helper has no command-line arguments and opens the copy with
 `SQLITE_OPEN_READONLY`. It is built as a static 32-bit musl binary because a
 modern glibc static binary cannot reliably access files from the controller's
 Linux 2.6.32 guest. Its initial fixed output reports only database
-presence/size and the row count of `statis_client_h`. It is intentionally not
-a general SQL endpoint, does not poll APs or clients, and does not create a
+presence/size and exposes fixed 24-hour Tx/Rx totals plus hourly points grouped
+by client MAC, AP ID, and SSID ID from `statis_client_h`. The result retains
+those IDs and resolves AP names and SSID names from the controller's existing
+`ap-list.xml` and `wlansvc-list.xml`; a client row similarly includes the
+controller's recorded device model when present. It is intentionally not a
+general SQL endpoint, does not poll APs or clients, and does not create a
 second history database. It is not linked from the stock UI yet.
 
 Client responsiveness/ping monitoring was deliberately not implemented. It
