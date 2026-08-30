@@ -299,6 +299,46 @@ if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
     /bin/busybox rm -f /newroot/etc/init.d/S98backend_diag
     /bin/busybox cp -f /zd-memory-snapshot.sh /newroot/etc/init.d/S98memory_snapshot
     /bin/busybox chmod 755 /newroot/etc/init.d/S98memory_snapshot
+    # A same-origin static page consumes a fixed read-only SQLite snapshot.
+    # Place the generated JSON on the writable partition, then expose it via
+    # an immutable-root symlink. The collector runs after pivot and accepts no
+    # browser input, so this does not require CGI or EJS native SQLite APIs.
+    if [ -r /zd-analytics/snapshot.html ] && [ -x /zd-analytics/snapshot ]; then
+        /bin/busybox mkdir -p /newroot/usr/local/sbin
+        /bin/busybox cp -f /zd-analytics/snapshot /newroot/usr/local/sbin/zd1200-analytics-snapshot
+        /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-analytics-snapshot
+        /bin/busybox cp -f /zd-analytics/snapshot.html /newroot/web/admin10/zd1200-analytics.html
+        /bin/busybox chmod 644 /newroot/web/admin10/zd1200-analytics.html
+        /bin/busybox mkdir -p /data/zd1200-analytics
+        /bin/busybox rm -f /newroot/web/admin10/zd1200-analytics-snapshot.json
+        /bin/busybox ln -s /writable/zd1200-analytics/snapshot.json \
+            /newroot/web/admin10/zd1200-analytics-snapshot.json
+        /bin/busybox cat > /newroot/etc/init.d/S99zd_analytics_snapshot <<'ZD_ANALYTICS_SNAPSHOT_INIT'
+#!/bin/sh
+(
+    output=/writable/zd1200-analytics/snapshot.json
+    temporary="$output.tmp.$$"
+    database=/tmp/sqlited/statistic.db
+    database_snapshot=/writable/zd1200-analytics/statistic.db
+    mkdir -p /writable/zd1200-analytics
+    attempts=0
+    while [ "$attempts" -lt 60 ]; do
+        if [ -s "$database" ]; then
+            cp "$database" "$database_snapshot" 2>/dev/null || true
+            [ -s "$database_snapshot" ] \
+                && /usr/local/sbin/zd1200-analytics-snapshot > "$temporary" \
+                && mv -f "$temporary" "$output" && exit 0
+        fi
+        attempts=$((attempts + 1))
+        sleep 2
+    done
+    printf '{"status":"waiting","database_present":false}\n' > "$temporary"
+    mv -f "$temporary" "$output"
+) &
+exit 0
+ZD_ANALYTICS_SNAPSHOT_INIT
+        /bin/busybox chmod 755 /newroot/etc/init.d/S99zd_analytics_snapshot
+    fi
     # Keep the vendor account database path. In particular, legacy AP-image
     # FTP authenticates its internal service account through this writable
     # database. Replacing it with a static passwd file makes vsftpd listen but

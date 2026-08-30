@@ -62,6 +62,8 @@ sources=(
     "$work_dir/zd-controller-wrapper.sh"
     "$work_dir/zd-memory-snapshot.sh"
     "$work_dir/zd_root_ssh.py"
+    "$work_dir/analytics/snapshot.html"
+    "$work_dir/zd1200-analytics-snapshot"
 )
 if [ -f "$payload" ]; then
     sources+=("$payload")
@@ -93,6 +95,9 @@ mkdir -p "$staging/bin"
 cp "$work_dir/boot-initrd-handoff" "$staging/bin/boot-handoff"
 cp "$work_dir/zd-controller-wrapper.sh" "$staging/zd-controller-wrapper.sh"
 cp "$work_dir/zd-memory-snapshot.sh" "$staging/zd-memory-snapshot.sh"
+mkdir -p "$staging/zd-analytics"
+cp "$work_dir/analytics/snapshot.html" "$staging/zd-analytics/snapshot.html"
+cp "$work_dir/zd1200-analytics-snapshot" "$staging/zd-analytics/snapshot"
 if [ -f "$payload" ]; then
     mkdir -p "$staging/zd-payload"
     # The container deliberately drops CAP_CHOWN. GNU tar otherwise notices
@@ -112,7 +117,7 @@ fi
     printf 'SUPPORT_ENTITLEMENT_END_EPOCH=%s\n' "$support_entitlement_end_epoch"
 } > "$staging/zd-runtime-options"
 
-chmod 755 "$staging/bin/boot-handoff"
+chmod 755 "$staging/bin/boot-handoff" "$staging/zd-analytics/snapshot"
 chmod 755 "$staging/zd-controller-wrapper.sh" "$staging/zd-memory-snapshot.sh"
 
 gzip -dc "$base_initrd" > "$combined"

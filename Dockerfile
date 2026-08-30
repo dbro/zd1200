@@ -1,3 +1,7 @@
+# The guest is an i386 Linux 2.6.32 system. Keep its helper i386 even when
+# Docker builds the surrounding image on an ARM or x86-64 host.
+ARG ANALYTICS_HELPER_PLATFORM=linux/386
+
 FROM debian:13-slim AS ruckus-squashfs-tools
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -17,6 +21,38 @@ RUN apt-get update \
     && git -C /src fetch --depth 1 origin "$RUCKUS_AP_TOOLS_REV" \
     && git -C /src checkout --detach FETCH_HEAD \
     && make -C /src/src/squashfs4.0-ruckus-lzma -j"$(nproc)"
+
+FROM --platform=$ANALYTICS_HELPER_PLATFORM debian:13-slim AS analytics-snapshot-helper
+
+ARG DEBIAN_FRONTEND=noninteractive
+# Use a SQLite release contemporary with the ZD1200's Linux 2.6.32 guest.
+# Modern SQLite builds returned SQLITE_IOERR when opening its live database.
+ARG SQLITE_YEAR=2013
+ARG SQLITE_AMALGAMATION=3071700
+ARG SQLITE_AMALGAMATION_SHA256=022ef41bd83a1333faf40dc8f1f8469205f4a18c30dc5e137889ba7ea924ef30
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        build-essential \
+        musl-tools \
+        unzip \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL "https://www.sqlite.org/${SQLITE_YEAR}/sqlite-amalgamation-${SQLITE_AMALGAMATION}.zip" \
+        -o /tmp/sqlite-amalgamation.zip \
+    && echo "${SQLITE_AMALGAMATION_SHA256}  /tmp/sqlite-amalgamation.zip" | sha256sum -c - \
+    && unzip -q /tmp/sqlite-amalgamation.zip -d /src
+
+COPY analytics/zd1200-analytics-snapshot.c /src/zd1200-analytics-snapshot.c
+
+RUN mkdir -p /out \
+    && musl-gcc -std=c99 -Os -static -s \
+        -DSQLITE_OMIT_LOAD_EXTENSION \
+        -I"/src/sqlite-amalgamation-${SQLITE_AMALGAMATION}" \
+        /src/zd1200-analytics-snapshot.c \
+        "/src/sqlite-amalgamation-${SQLITE_AMALGAMATION}/sqlite3.c" \
+        -o /out/zd1200-analytics-snapshot
 
 FROM debian:13-slim
 
@@ -52,6 +88,9 @@ COPY --from=ruckus-squashfs-tools \
      /src/src/squashfs4.0-ruckus-lzma/mksquashfs \
      /src/src/squashfs4.0-ruckus-lzma/unsquashfs \
      /usr/local/lib/zd1200/ruckus-squashfs/
+COPY --from=analytics-snapshot-helper \
+     /out/zd1200-analytics-snapshot \
+     /opt/zd1200/zd1200-analytics-snapshot
 
 RUN chmod +x /opt/zd1200/boot-initrd-handoff \
         /opt/zd1200/*.sh /opt/zd1200/*.py \

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>ZD1200 analytics snapshot</title>
+</head>
+<body>
+  <h1>ZD1200 analytics snapshot</h1>
+  <pre id="result">Loading…</pre>
+  <script>
+    fetch("zd1200-analytics-snapshot.json", { cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        return response.json();
+      })
+      .then((data) => {
+        document.getElementById("result").textContent = JSON.stringify(data, null, 2);
+      })
+      .catch((error) => {
+        document.getElementById("result").textContent = "Snapshot error: " + error;
+      });
+  </script>
+</body>
+</html>
