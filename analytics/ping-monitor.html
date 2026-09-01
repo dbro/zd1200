@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ping Monitor - ZoneDirector</title>
+<link href="/build/vendor.css" rel="stylesheet">
+<link href="/build/app.css" rel="stylesheet">
+<link href="/ruckus_oem.css" rel="stylesheet">
+<style>
+html,body{min-height:100%;margin:0;background:#fafafa;color:#333}#content-overlay{min-height:100%;overflow:auto;background:#fafafa}#monitor-scroll{min-width:980px;min-height:100%;padding:26px 20px}.monitor-box{position:relative;min-height:calc(100vh - 52px);padding:70px 20px 30px;background:#ebebeb}.monitor-title{position:absolute;top:28px;left:20px;margin:0;color:#909090;font:700 30px/1 'Helvetica Neue',Helvetica,Arial,sans-serif}.monitor-card{margin-bottom:16px;padding:16px 18px;border:1px solid #d8d8d8;background:#fff}.monitor-card:last-child{margin-bottom:0}.monitor-section-title{margin:0 0 12px;color:#333;font-size:16px}.monitor-summary{margin-bottom:14px;color:#666}.filters{display:flex;align-items:flex-end;flex-wrap:wrap;gap:12px;padding:12px 14px;background:#f5f5f5;border:1px solid #ddd}.filters strong{align-self:center;margin-right:4px}.filters label,.range-control{display:flex;align-items:center;gap:6px;margin:0;color:#555;font-weight:normal}.filters input,.filters select,.range-control select{height:30px;padding:4px 8px;border:1px solid #bbb;border-radius:2px;background:#fff;color:#333}.filters input{width:120px}#targets table{width:100%;margin:12px 0 0;border-collapse:collapse;background:#fff}#targets table th,#targets table td{padding:8px;border-bottom:1px solid #ddd;text-align:left;vertical-align:middle}#targets table th{color:#666;background:#f5f5f5;font-weight:bold}#targets table tr[data-id]{cursor:pointer}#targets table tr[data-id]:hover,#targets table tr.selected{background:#e8f2fb}.number{text-align:right!important}.identifier,.note{font:12px/1.4 monospace;color:#666}.chart{width:260px;height:56px}.hint{margin:0 0 12px;padding:10px 12px;border-left:3px solid #2b8de5;background:#f5f5f5;color:#666;line-height:1.5}.range-control{margin-bottom:10px}.timeline{width:100%;height:190px;border:1px solid #ccc;background:#fff;cursor:crosshair}.grid{stroke:#c5c5c5}.pick{stroke:#754a9e;stroke-width:2}#hover,#chosen{padding:7px 0;color:#666}#diff{margin-top:14px}.diff-tabs{border-bottom:1px solid #ccc}.diff-tabs button{margin:0 3px -1px 0;padding:7px 12px;border:1px solid #ccc;background:#eee;color:#444;cursor:pointer}.diff-tabs button.active{border-bottom-color:#fff;background:#fff;font-weight:bold}.diff-tabs label{display:inline-block;margin:0 0 8px 8px;font-weight:normal}.compare{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin:8px 0 20px}.pane{overflow:auto;max-height:420px;border:1px solid #ccc;background:#fff}.pane h4{position:sticky;top:0;margin:0;padding:8px;background:#eee}.xml-line{padding:0 6px;white-space:pre;font:12px/1.4 monospace}.removed{background:#ffe3e3}.added{background:#e0f4e5}@media(max-width:1180px){.filters{align-items:stretch}.compare{grid-template-columns:1fr}.chart{width:210px}}
+</style>
+</head>
+<body>
+<main id="content-overlay">
+<div id="monitor-scroll">
+<section class="main-box monitor-box">
+<h1 class="monitor-title">Ping Monitor</h1>
+<div class="monitor-card">
+<p id="summary" class="monitor-summary">Loading…</p>
+<div class="filters">
+<strong>Targets</strong> <label>Type <select id="kind">
+<option value="">All</option>
+<option value="ap">APs</option>
+<option value="wireless">Wireless devices</option>
+<option value="wired">Wired devices</option>
+</select>
+</label>
+<label>SSID <select id="ssid">
+<option value="">All</option>
+</select>
+</label>
+<label>Upstream AP <select id="ap">
+<option value="">All</option>
+</select>
+</label>
+<label>IP address range <input id="ip-from" placeholder="beginning"> to <input id="ip-to" placeholder="end">
+</label>
+</div>
+<div id="targets"></div>
+</div>
+<div class="monitor-card">
+<h2 class="monitor-section-title">Performance timeline</h2>
+<p class="hint">Click a target row, then click two network configuration snapshots to compare them. Dark ticks mark a complete network configuration snapshot: the controller's AP, client, and mesh views captured together.</p>
+<label class="range-control">Range <select id="range">
+<option value="1h">1 hour</option>
+<option value="24h" selected>24 hours</option>
+<option value="7d">7 days</option>
+<option value="30d">30 days</option>
+</select>
+</label>
+<div id="host"></div>
+<div id="hover">Move over the timeline to inspect a bucket.</div>
+<div id="chosen">Click two points to compare network configuration snapshots.</div>
+<div id="diff"></div>
+</div>
+</section>
+</div>
+</main>
+<script>
+const $=x=>document.getElementById(x),S=x=>new Date(x*1000).toLocaleString(),W=1000,L=46,R=12,Y=v=>158-Math.max(0,Math.min(1,Math.log10(Math.max(1,v))/3))*142;let M,I,id,range=$('range').value,picks=[],C={clients:{},aps:{}},D,showChangedOnly=false;
+function mark(x,a,b,c,tip){return Math.abs(a-b)<2?`<circle cx="${x}" cy="${a}" r="2.5" fill="${c}"><title>${tip}</title></circle>`:`<line x1="${x}" x2="${x}" y1="${a}" y2="${b}" stroke="${c}" stroke-width="3"><title>${tip}</title></line>`}
+function spark(h,start){let z='';for(let v of[1,10,100,1000]){let y=50-Math.log10(v)/3*46;z+=`<line x1="0" x2="260" y1="${y}" y2="${y}" stroke="#aeb9c2"/><text x="0" y="${y+3}" font-size="8">${v}</text>`}h.forEach((p,n)=>{if(p[2]===null)return;let y=v=>50-Math.log10(Math.max(1,v))/3*46;z+=mark(6+n*10.7,y(p[3]),y(p[2]),p[1]?'#c75c35':'#287bb5',`${S(start+n*3600)}: ${p[0]-p[1]}/${p[0]} responses; p50 ${p[2]} ms, p99 ${p[3]} ms`)});return`<svg class="chart" viewBox="0 0 260 56">${z}</svg>`}
+function target(){return M.targets.find(t=>t.id===id)}function nearestSnapshot(t){return I.snapshots.reduce((best,s)=>!best||Math.abs(s.observed_at-t)<Math.abs(best.observed_at-t)?s:best,null)}function apInfo(t){return C.aps[t.ap_id]||Object.values(C.aps).find(a=>a.ip===t.ip)||{}}
+function ipNumber(ip){let a=ip.split('.').map(Number);return a.length===4&&a.every(x=>x>=0&&x<256)?a.reduce((v,x)=>v*256+x,0):null}
+function visible(t){let c=C.clients[t.client_mac]||{},from=ipNumber($('ip-from').value),to=ipNumber($('ip-to').value),ip=ipNumber(t.ip),type=$('kind').value,allowed=!type||(type==='ap'&&t.kind==='ap')||(type==='wireless'&&t.kind==='client')||(type==='wired'&&t.kind==='wired');if(!allowed)return false;if($('ssid').value&&c.ssid!==$('ssid').value)return false;if($('ap').value&&(c.ap!==$('ap').value&&t.ap_id!==$('ap').value))return false;return !(ip===null||(from!==null&&ip<from)||(to!==null&&ip>to))}
+function rows(){let r=M.targets.filter(t=>(t.successful_replies||t.retained_attempts<10)&&visible(t));$('targets').innerHTML=`<table><thead><tr><th>Target</th><th>Identity/address</th><th class="number">24h replies/attempts</th><th>Last response</th><th>24h p50–p99</th></tr></thead><tbody>${r.map(t=>{let c=C.clients[t.client_mac]||{},a=apInfo(t);return`<tr data-id="${t.id}" class="${t.id===id?'selected':''}"><td><b>${t.name}</b><div class="note">${t.kind==='client'?`${c.ssid||'wireless'} via ${(C.aps[c.ap]||{}).name||c.ap||'unknown AP'}`:a.wired?'wired AP':'AP'}</div></td><td class="identifier">${t.ip}${t.client_mac?`<br>MAC ${t.client_mac}`:''}</td><td class="number">${t.samples-t.failures}/${t.samples}</td><td class="note">${t.last_response_at?S(t.last_response_at):'Never'}</td><td>${spark(t.hours,M.window_start)}</td></tr>`}).join('')}</tbody></table>`;document.querySelectorAll('tr[data-id]').forEach(e=>e.onclick=()=>{id=+e.dataset.id;rows();timeline()})}
+function prettyXml(text){let doc=new DOMParser().parseFromString(text,'application/xml'),bad=doc.querySelector('parsererror');if(bad)return text.replace(/>\s*</g,'>\n<').split('\n');let walk=(node,depth=0)=>{let pad='  '.repeat(depth);if(node.nodeType===3){let v=node.nodeValue.trim();return v?pad+v:''}if(node.nodeType!==1)return '';let attrs=[...node.attributes].sort((a,b)=>a.name.localeCompare(b.name)).map(a=>`\n${pad}  @${a.name}=${JSON.stringify(a.value)}`).join(''),kids=[...node.childNodes].map(n=>walk(n,depth+1)).filter(Boolean);return `${pad}<${node.nodeName}${attrs}>${kids.length?'\n'+kids.join('\n')+'\n'+pad:''}</${node.nodeName}>`};return [...doc.childNodes].map(n=>walk(n)).filter(Boolean).join('\n').split('\n')}
+function escapeHtml(x){return x.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function alignedRows(a,b){let i=0,j=0,out=[];while(i<a.length||j<b.length){if(i<a.length&&j<b.length&&a[i]===b[j]){out.push([a[i++],b[j++],'','']);continue}let ai=i<a.length?b.indexOf(a[i],j+1):-1,bi=j<b.length?a.indexOf(b[j],i+1):-1;if(ai<0&&bi<0){out.push([a[i++]||'',b[j++]||'','removed','added']);continue}if(ai>=0&&(bi<0||ai-j<=bi-i)){while(j<ai)out.push(['',b[j++],'','added'])}else while(i<bi)out.push([a[i++],'','removed',''])}return out}
+function sideBySide(before,after,leftTitle,rightTitle){let rows=alignedRows(prettyXml(before),prettyXml(after));return {added:rows.filter(r=>r[3]==='added').length,removed:rows.filter(r=>r[2]==='removed').length,rows,leftTitle,rightTitle}}
+function comparisonHtml(c){let rows=showChangedOnly?c.rows.filter(r=>r[2]||r[3]):c.rows,left=rows.map(r=>`<div class="xml-line ${r[2]}">${escapeHtml(r[0])}</div>`).join(''),right=rows.map(r=>`<div class="xml-line ${r[3]}">${escapeHtml(r[1])}</div>`).join('');return `<div class="compare"><section class="pane"><h4>${c.leftTitle}</h4>${left}</section><section class="pane"><h4>${c.rightTitle}</h4>${right}</section></div>`}
+async function comparisonFor(type){if(D.comparisons[type])return D.comparisons[type];if(D.loading[type])return D.loading[type];D.loading[type]=Promise.all([fetch(`zd1200-ping-monitor-snapshots/${D.a}-${type}.xml`,{cache:'no-store'}).then(r=>r.text()),fetch(`zd1200-ping-monitor-snapshots/${D.b}-${type}.xml`,{cache:'no-store'}).then(r=>r.text())]).then(([oldText,newText])=>{let c=sideBySide(oldText,newText,S(D.a),S(D.b));D.comparisons[type]=c;let entry=D.types.find(x=>x[0]===type),button=document.querySelector(`.diff-tabs button[data-type="${type}"]`);if(button)button.textContent=`${entry[1]} (+${c.added}, −${c.removed})`;return c});return D.loading[type]}
+async function showDiffTab(type){let entry=D.types.find(x=>x[0]===type),content=$('diff-content');D.active=type;document.querySelectorAll('.diff-tabs button').forEach(b=>b.classList.toggle('active',b.dataset.type===type));content.textContent=`Loading ${entry[1].toLowerCase()}…`;try{let c=await comparisonFor(type);if(D.active===type)content.innerHTML=comparisonHtml(c)}catch(e){content.textContent=`Unable to load this configuration comparison: ${e.message}`}}
+function showDiff(){if(picks.length<2)return;let [a,b]=[...picks].sort((x,y)=>x-y);D={a,b,types:[['ap','AP configuration'],['client','Client configuration'],['mesh','Mesh configuration']],comparisons:{},loading:{},active:'ap'};$('diff').innerHTML=`<div class="diff-tabs">${D.types.map(([type,title])=>`<button data-type="${type}">${title} (…)</button>`).join('')} <label><input id="changed-only" type="checkbox"${showChangedOnly?' checked':''}> Show only changed lines</label></div><div id="diff-content">Loading AP configuration…</div>`;document.querySelectorAll('.diff-tabs button').forEach(button=>button.onclick=()=>showDiffTab(button.dataset.type));$('changed-only').onchange=e=>{showChangedOnly=e.target.checked;showDiffTab(D.active)};showDiffTab('ap');D.types.forEach(([type])=>comparisonFor(type))}
+function timeline(){
+ let t=target(),s=t.timeline[range],p=s.points,n=p.length,plot=W-L-R,end=s.start+n*s.bucket,x=i=>L+(i+.5)*plot/n,z='';
+ let snaps=I.snapshots.filter(a=>a.observed_at>=s.start&&a.observed_at<end);
+ snaps.forEach(a=>{let q=L+(a.observed_at-s.start)/(end-s.start)*plot;z+=`<line x1="${q}" x2="${q}" y1="161" y2="168" stroke="#52616d"><title>Network snapshot: ${S(a.observed_at)}</title></line>`});
+ p.forEach((q,i)=>{if(q[2]!==null)z+=mark(x(i),Y(q[3]),Y(q[2]),q[1]?'#c75c35':'#287bb5',`${S(s.start+i*s.bucket)}: ${q[0]-q[1]}/${q[0]} responses; p50 ${q[2]} ms, p99 ${q[3]} ms`)});
+ for(let v of[1,10,100,1000])z+=`<line class="grid" x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}"/><text x="3" y="${Y(v)+4}">${v}</text>`;
+ picks.forEach(a=>{if(a>=s.start&&a<end){let q=L+(a-s.start)/(end-s.start)*plot;z+=`<line class="pick" x1="${q}" x2="${q}" y1="4" y2="160"><title>Selected snapshot: ${S(a)}</title></line>`}});
+ $('host').innerHTML=`<svg id="tl" class="timeline" viewBox="0 0 ${W} 190" preserveAspectRatio="none"><text x="${L}" y="181">${S(s.start)}</text><text text-anchor="end" x="${W-R}" y="181">${S(end)}</text>${z}</svg>`;
+ let pos=e=>{let b=e.currentTarget.getBoundingClientRect(),svgX=(e.clientX-b.left)*W/b.width,r=Math.max(0,Math.min(1,(svgX-L)/plot)),i=Math.max(0,Math.min(n-1,Math.floor(r*n))),q=p[i],at=s.start+i*s.bucket,near=nearestSnapshot(at),note=near&&near.observed_at>=s.start&&near.observed_at<end?` Nearest snapshot: ${S(near.observed_at)}.`:' No saved snapshot in this range.';$('hover').textContent=(q[2]===null?`${S(at)}: no ping attempt.`:`${S(at)}: ${q[0]-q[1]}/${q[0]} responses; p50 ${q[2]} ms, p99 ${q[3]} ms.`)+note;return at};
+ $('tl').onmousemove=pos;$('tl').onclick=e=>{let near=nearestSnapshot(pos(e));if(!near||near.observed_at<s.start||near.observed_at>=end)return;picks=[...picks,near.observed_at].slice(-2);$('chosen').textContent=picks.length<2?`Selected: ${S(picks[0])}. Choose one more snapshot.`:`Selected snapshots: ${S(Math.min(...picks))} → ${S(Math.max(...picks))}`;timeline();showDiff()}
+}
+async function loadContext(){let snapshots=[...I.snapshots].reverse();if(!snapshots.length)return;try{let parse=x=>new DOMParser().parseFromString(x,'application/xml'),latest=snapshots[0],[apText,meshText]=await Promise.all(['ap','mesh'].map(k=>fetch(`zd1200-ping-monitor-snapshots/${latest.observed_at}-${k}.xml`,{cache:'no-store'}).then(r=>r.text())));parse(apText).querySelectorAll('ap').forEach(a=>{let mac=a.getAttribute('mac');if(mac)C.aps[mac]={name:a.getAttribute('ap-name')||a.getAttribute('devname')||mac,ip:a.getAttribute('ip')||'',wired:a.getAttribute('mesh-uplink-type')==='wired'||a.getAttribute('mesh_uplink_type')==='wired'||a.getAttribute('mesh-depth')==='0'}});parse(meshText).querySelectorAll('[mac]').forEach(a=>{let mac=a.getAttribute('mac');if(mac&&!C.aps[mac])C.aps[mac]={name:a.getAttribute('ap-name')||a.getAttribute('devname')||`Mesh AP ${mac}`,ip:a.getAttribute('ip')||'',wired:false}});for(let s of snapshots.slice(0,120)){let text=await fetch(`zd1200-ping-monitor-snapshots/${s.observed_at}-client.xml`,{cache:'no-store'}).then(r=>r.text()),clients=parse(text).querySelectorAll('client');clients.forEach(c=>{let mac=c.getAttribute('mac');if(mac)C.clients[mac]={ssid:c.getAttribute('ssid')||'',ap:c.getAttribute('ap')||''}});if(Object.keys(C.clients).length)break}let add=(id,items,label=x=>x)=>{$(id).innerHTML='<option value="">All</option>'+items.map(x=>`<option value="${x}">${label(x)}</option>`).join('')};add('ssid',[...new Set(Object.values(C.clients).map(x=>x.ssid).filter(Boolean))]);add('ap',Object.keys(C.aps),x=>C.aps[x].name);rows()}catch(e){console.warn('Current association context unavailable',e)}}
+Promise.all([fetch('zd1200-ping-monitor-snapshot.json').then(r=>r.json()),fetch('zd1200-ping-monitor-snapshot-index.json').then(r=>r.json())]).then(([m,i])=>{M=m;I=i;id=m.targets[0].id;$('summary').textContent='Raw ping samples and network configuration snapshots are retained for 30 days.';$('range').onchange=e=>{range=e.target.value;timeline()};['kind','ssid','ap','ip-from','ip-to'].forEach(x=>{let e=$(x);e.oninput=rows;e.onchange=rows});rows();timeline();loadContext()})
+</script>
+</body>
+</html>

@@ -53,6 +53,15 @@ services:
       ZD_ROOT_SSH_PUBLIC_KEY: ${ZD_ROOT_SSH_PUBLIC_KEY:-}
       # Optional finite support entitlement end date (YYYY-MM-DD).
       ZD_SUPPORT_ENTITLEMENT_END: ${ZD_SUPPORT_ENTITLEMENT_END:-}
+      # Optional read-only account used only by the local Ping Monitor
+      # snapshot collector. Set both variables or leave both unset.
+      ZD_SNAPSHOT_USERNAME: ${ZD_SNAPSHOT_USERNAME:-}
+      ZD_SNAPSHOT_PASSWORD: ${ZD_SNAPSHOT_PASSWORD:-}
+      # Semicolon-separated opt-in client targets: MAC|IPv4|friendly name.
+      ZD_PING_CLIENT_TARGETS: ${ZD_PING_CLIENT_TARGETS:-}
+      # Ping Monitor timing, validated during runtime-initrd construction.
+      ZD_PING_INTERVAL_SECONDS: ${ZD_PING_INTERVAL_SECONDS:-60}
+      ZD_SNAPSHOT_INTERVAL_SECONDS: ${ZD_SNAPSHOT_INTERVAL_SECONDS:-60}
       # Work around the 2.6.32 tickless-idle spin demonstrated in cpu-study.
       KERNEL_EXTRA: nohz=off
       WEB_WAIT_SECONDS: "600"

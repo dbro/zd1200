@@ -247,6 +247,30 @@ ZD_ROOT_CLI
     else
         /bin/busybox rm -f "$root_ssh_store"
     fi
+    # Ping Monitor credentials are supplied only when explicitly configured
+    # through Compose. Keep the recovery copy on the writable partition, mode
+    # 0600, and remove only the file owned by this project when unset.
+    ping_credentials=/data/zd1200-ping-monitor/credentials.env
+    /bin/busybox mkdir -p /data/zd1200-ping-monitor
+    if [ -r /zd-snapshot-credentials ]; then
+        /bin/busybox cp -f /zd-snapshot-credentials "$ping_credentials"
+        /bin/busybox chmod 600 "$ping_credentials"
+        echo "BOOT-HANDOFF: provisioned Ping Monitor local credentials" >/dev/console
+    else
+        /bin/busybox rm -f "$ping_credentials"
+    fi
+    ping_targets=/data/zd1200-ping-monitor/client-targets.conf
+    if [ -r /zd-ping-client-targets ]; then
+        /bin/busybox cp -f /zd-ping-client-targets "$ping_targets"
+        /bin/busybox chmod 600 "$ping_targets"
+    else
+        /bin/busybox rm -f "$ping_targets"
+    fi
+    # The polling configuration is data-only and is validated again by the
+    # guest startup hook before it is used for scheduling.
+    /bin/busybox sed -n '/^PING_INTERVAL_SECONDS=/p;/^SNAPSHOT_INTERVAL_SECONDS=/p' \
+        /zd-runtime-options > /data/zd1200-ping-monitor/intervals.conf
+    /bin/busybox chmod 600 /data/zd1200-ping-monitor/intervals.conf
     # The factory wizard's SessionCheck path leaves session["cid"] empty, but
     # its two AJAX modules still reject requests unless a CSRF header matches
     # that CID.  Use narrowly patched copies until the completed wizard writes
@@ -299,50 +323,612 @@ if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
     /bin/busybox rm -f /newroot/etc/init.d/S98backend_diag
     /bin/busybox cp -f /zd-memory-snapshot.sh /newroot/etc/init.d/S98memory_snapshot
     /bin/busybox chmod 755 /newroot/etc/init.d/S98memory_snapshot
-    # A same-origin static page consumes a fixed read-only SQLite snapshot.
-    # Place the generated JSON on the writable partition, then expose it via
-    # an immutable-root symlink. The collector runs after pivot and accepts no
-    # browser input, so this does not require CGI or EJS native SQLite APIs.
-    if [ -r /zd-analytics/snapshot.html ] && [ -x /zd-analytics/snapshot ]; then
+    # The monitor publishes fixed same-origin JSON and raw configuration
+    # captures. It accepts no browser input and needs no CGI or EJS extension.
+    if [ -r /zd-analytics/ping-monitor.html ] \
+        && [ -x /zd-analytics/ping-monitor ] \
+        && [ -x /zd-analytics/network-snapshot-collect.sh ]; then
         /bin/busybox mkdir -p /newroot/usr/local/sbin
-        /bin/busybox cp -f /zd-analytics/snapshot /newroot/usr/local/sbin/zd1200-analytics-snapshot
-        /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-analytics-snapshot
-        /bin/busybox cp -f /zd-analytics/snapshot.html /newroot/web/admin10/zd1200-analytics.html
-        /bin/busybox chmod 644 /newroot/web/admin10/zd1200-analytics.html
-        /bin/busybox mkdir -p /data/zd1200-analytics
-        /bin/busybox rm -f /newroot/web/admin10/zd1200-analytics-snapshot.json
-        /bin/busybox ln -s /writable/zd1200-analytics/snapshot.json \
-            /newroot/web/admin10/zd1200-analytics-snapshot.json
-        /bin/busybox cat > /newroot/etc/init.d/S99zd_analytics_snapshot <<'ZD_ANALYTICS_SNAPSHOT_INIT'
+        # The selected vendor root does not provide a standalone sed utility.
+        # Preserve the static BusyBox from this handoff environment for the
+        # late hook that must alter the active UI bundle after pivot.
+        /bin/busybox cp -f /bin/busybox /newroot/usr/local/sbin/busybox
+        /bin/busybox chmod 755 /newroot/usr/local/sbin/busybox
+        /bin/busybox cp -f /zd-analytics/ping-monitor /newroot/usr/local/sbin/zd1200-ping-monitor
+        /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-ping-monitor
+        /bin/busybox cp -f /zd-analytics/network-snapshot-collect.sh /newroot/usr/local/sbin/zd1200-network-snapshot-collect
+        /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-network-snapshot-collect
+        /bin/busybox cp -f /zd-analytics/ping-monitor.html /newroot/web/admin10/zd1200-ping-monitor.html
+        /bin/busybox chmod 644 /newroot/web/admin10/zd1200-ping-monitor.html
+        # app.jsp loads app.js for the regular console. Keep the menu patch in
+        # a small idempotent helper because the selected vendor root can replace
+        # the early /newroot view during pivot. The late init hook invokes it
+        # against the active root and refreshes the precompressed asset too.
+        /bin/busybox cat > /newroot/usr/local/sbin/zd1200-patch-ping-menu <<'ZD_PING_MENU_PATCH'
+#!/bin/sh
+root=${1:-}
+if [ -n "$root" ]; then
+    bb=/bin/busybox
+else
+    bb=/usr/local/sbin/busybox
+fi
+bundle=$root/web/build/app.js
+compressed=$bundle.gz
+marker=zd1200_ping_monitor
+panel_marker=zd1200-ping-monitor-panel-v2
+changed=0
+
+[ -r "$bundle" ] || exit 1
+if "$bb" grep -q 'id:"zd1200_ping_monitor",title:"Ping Monitor"' "$bundle"; then
+    "$bb" sed -i \
+        -e 's|{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"/admin10/zd1200-ping-monitor.html"}|{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"javascript:window.zd1200ShowPingMonitor()"}|g' \
+        -e 's|{id:"zd1200_ping_monitor",title:"Ping Monitor",location:"zd1200_ping_monitor",url:"/admin10/app.jsp#zd1200_ping_monitor"}|{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"javascript:window.zd1200ShowPingMonitor()"}|g' \
+        "$bundle"
+    changed=1
+fi
+if ! "$bb" grep -q "$marker" "$bundle"; then
+    "$bb" sed -i \
+        -e 's|children:\[a,n,r\]})|children:[a,n,r,{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"javascript:window.zd1200ShowPingMonitor()"}]})|g' \
+        -e 's|children:\[n,r\]})|children:[n,r,{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"javascript:window.zd1200ShowPingMonitor()"}]})|g' \
+        "$bundle"
+    changed=1
+fi
+
+if ! "$bb" grep -q "$marker" "$bundle"; then
+    echo "ZD Ping Monitor: app.js menu signature not found" >/dev/console
+    exit 1
+fi
+
+if "$bb" grep -q 'window.location.hash==="#zd1200_ping_monitor"' "$bundle" \
+    && ! "$bb" grep -q "$panel_marker" "$bundle"; then
+    old_loader_tmp=$bundle.old-loader.$$
+    if "$bb" awk '
+        BEGIN { dropping=0 }
+        !dropping && /;\(function\(\)\{$/ {
+            sub(/;\(function\(\)\{$/, "")
+            print
+            dropping=1
+            next
+        }
+        dropping {
+            if ($0 == "})();") dropping=0
+            next
+        }
+        { print }
+    ' "$bundle" > "$old_loader_tmp"; then
+        "$bb" chmod 644 "$old_loader_tmp"
+        "$bb" mv -f "$old_loader_tmp" "$bundle"
+        changed=1
+    else
+        "$bb" rm -f "$old_loader_tmp"
+        exit 1
+    fi
+fi
+
+if ! "$bb" grep -q "$panel_marker" "$bundle"; then
+    "$bb" cat >> "$bundle" <<'ZD_PING_PANEL_LOADER'
+;(function(){
+var frameId="zd1200-ping-monitor-frame";
+var panelVersion="zd1200-ping-monitor-panel-v2";
+var visible=false;
+var savedActive=[];
+function pingMenuItem(){
+    var titles=document.querySelectorAll(".rks-menulist__title");
+    for(var i=0;i<titles.length;i++){
+        if((titles[i].textContent||"").replace(/^\s+|\s+$/g,"")==="Ping Monitor"){
+            var item=titles[i];
+            while(item&&item.tagName!=="LI")item=item.parentNode;
+            return item;
+        }
+    }
+    return null;
+}
+function markPingActive(){
+    var ping=pingMenuItem();
+    if(!ping)return;
+    var active=document.querySelectorAll("li.rks-menulist__menu--active");
+    for(var i=0;i<active.length;i++){
+        if(active[i]!==ping){
+            if(savedActive.indexOf(active[i])<0)savedActive.push(active[i]);
+            active[i].classList.remove("rks-menulist__menu--active");
+        }
+    }
+    ping.classList.add("rks-menulist__menu--active");
+}
+function restoreMenuActive(){
+    var ping=pingMenuItem();
+    if(ping)ping.classList.remove("rks-menulist__menu--active");
+    for(var i=0;i<savedActive.length;i++){
+        if(document.documentElement.contains(savedActive[i]))savedActive[i].classList.add("rks-menulist__menu--active");
+    }
+    savedActive=[];
+}
+function syncPingPanel(){
+    var frame=document.getElementById(frameId);
+    if(!visible)return;
+    if(!document.body)return;
+    if(!frame){
+        frame=document.createElement("iframe");
+        frame.id=frameId;
+        frame.title="Ping Monitor";
+        frame.src="/admin10/zd1200-ping-monitor.html";
+        frame.style.cssText="position:fixed;z-index:1;top:66px;right:0;bottom:0;width:auto;height:auto;border:0;background:#fafafa;";
+        document.body.appendChild(frame);
+    }
+    var wrapper=document.getElementById("wrapper");
+    frame.style.left=wrapper&&wrapper.classList.contains("wrapper--collapsed")?"35px":"220px";
+    markPingActive();
+}
+function hidePingPanel(){
+    visible=false;
+    var frame=document.getElementById(frameId);
+    if(frame&&frame.parentNode)frame.parentNode.removeChild(frame);
+    restoreMenuActive();
+}
+window.zd1200ShowPingMonitor=function(){visible=true;syncPingPanel();};
+window.addEventListener("hashchange",hidePingPanel,false);
+document.addEventListener("click",function(event){
+    if(!visible)return;
+    var node=event.target,inLeftMenu=false,isPing=false,isToggler=false;
+    while(node&&node!==document.body){
+        if(node.id==="left-menu")inLeftMenu=true;
+        if(node.classList&&node.classList.contains("menu__toggler"))isToggler=true;
+        if(node.classList&&node.classList.contains("rks-menulist__title")&&(node.textContent||"").replace(/^\s+|\s+$/g,"")==="Ping Monitor")isPing=true;
+        node=node.parentNode;
+    }
+    if(inLeftMenu&&!isPing&&!isToggler)hidePingPanel();
+},false);
+window.setInterval(syncPingPanel,250);
+})();
+ZD_PING_PANEL_LOADER
+    changed=1
+fi
+
+if [ "$changed" = 1 ] && [ -e "$compressed" ]; then
+    temporary=$compressed.tmp.$$
+    if "$bb" gzip -c "$bundle" > "$temporary"; then
+        "$bb" chmod 644 "$temporary"
+        "$bb" mv -f "$temporary" "$compressed"
+    else
+        "$bb" rm -f "$temporary"
+        exit 1
+    fi
+fi
+ZD_PING_MENU_PATCH
+        # ZD has two independent UI entry points: app.js powers SPA pages such
+        # as Dashboard, while ruckus.js powers legacy JSP pages such as
+        # Diagnostics. Use one panel implementation and patch both menus so
+        # navigation behavior cannot diverge between the two page families.
+        /bin/busybox cat > /newroot/usr/local/sbin/zd1200-ping-panel.js <<'ZD_PING_PANEL_V3'
+;(function(){
+var frameId="zd1200-ping-monitor-frame";
+var panelVersion="zd1200-ping-monitor-panel-v3";
+var visible=false;
+var savedActive=[];
+function pingMenuItem(){
+    var titles=document.querySelectorAll(".rks-menulist__title");
+    for(var i=0;i<titles.length;i++){
+        if((titles[i].textContent||"").replace(/^\s+|\s+$/g,"")==="Ping Monitor"){
+            var item=titles[i];
+            while(item&&item.tagName!=="LI")item=item.parentNode;
+            return item;
+        }
+    }
+    return null;
+}
+function markPingActive(){
+    var ping=pingMenuItem();
+    if(!ping)return;
+    var active=document.querySelectorAll("li.rks-menulist__menu--active");
+    for(var i=0;i<active.length;i++){
+        if(active[i]!==ping){
+            if(savedActive.indexOf(active[i])<0)savedActive.push(active[i]);
+            active[i].classList.remove("rks-menulist__menu--active");
+        }
+    }
+    ping.classList.add("rks-menulist__menu--active");
+}
+function restoreMenuActive(){
+    var ping=pingMenuItem();
+    if(ping)ping.classList.remove("rks-menulist__menu--active");
+    for(var i=0;i<savedActive.length;i++){
+        if(document.documentElement.contains(savedActive[i]))savedActive[i].classList.add("rks-menulist__menu--active");
+    }
+    savedActive=[];
+}
+function panelBounds(){
+    var nav=document.getElementById("left-menu")||document.getElementById("leftcolumn");
+    var header=document.getElementById("header")||document.querySelector(".page-header");
+    var navRect=nav&&nav.getBoundingClientRect();
+    var headerRect=header&&header.getBoundingClientRect();
+    return {
+        left:navRect&&navRect.width?Math.max(0,navRect.right):(document.getElementById("wrapper")&&document.getElementById("wrapper").classList.contains("wrapper--collapsed")?35:220),
+        top:navRect&&navRect.height?Math.max(0,navRect.top):(headerRect?Math.max(0,headerRect.bottom):66)
+    };
+}
+function syncPingPanel(){
+    var frame=document.getElementById(frameId);
+    if(!visible)return;
+    if(!document.body)return;
+    if(!frame){
+        frame=document.createElement("iframe");
+        frame.id=frameId;
+        frame.title="Ping Monitor";
+        frame.src="/admin10/zd1200-ping-monitor.html";
+        frame.style.cssText="position:fixed;z-index:2147483000;right:0;bottom:0;width:auto;height:auto;border:0;background:#fafafa;";
+        document.body.appendChild(frame);
+    }
+    var bounds=panelBounds();
+    frame.style.left=bounds.left+"px";
+    frame.style.top=bounds.top+"px";
+    markPingActive();
+}
+function hidePingPanel(){
+    visible=false;
+    var frame=document.getElementById(frameId);
+    if(frame&&frame.parentNode)frame.parentNode.removeChild(frame);
+    restoreMenuActive();
+}
+window.zd1200ShowPingMonitor=function(){visible=true;syncPingPanel();};
+window.addEventListener("hashchange",hidePingPanel,false);
+document.addEventListener("click",function(event){
+    if(!visible)return;
+    var node=event.target,inLeftMenu=false,isPing=false,isToggler=false;
+    while(node&&node!==document.body){
+        if(node.id==="left-menu"||node.id==="leftcolumn")inLeftMenu=true;
+        if(node.classList&&node.classList.contains("menu__toggler"))isToggler=true;
+        if(node.classList&&node.classList.contains("rks-menulist__title")&&(node.textContent||"").replace(/^\s+|\s+$/g,"")==="Ping Monitor")isPing=true;
+        node=node.parentNode;
+    }
+    if(inLeftMenu&&!isPing&&!isToggler)hidePingPanel();
+},false);
+window.setInterval(syncPingPanel,250);
+})();
+ZD_PING_PANEL_V3
+        /bin/busybox chmod 644 /newroot/usr/local/sbin/zd1200-ping-panel.js
+        /bin/busybox cat > /newroot/usr/local/sbin/zd1200-patch-ping-menu <<'ZD_PING_MENU_PATCH_V3'
+#!/bin/sh
+root=${1:-}
+if [ -n "$root" ]; then
+    bb=/bin/busybox
+else
+    bb=/usr/local/sbin/busybox
+fi
+marker=zd1200_ping_monitor
+panel_marker=zd1200-ping-monitor-panel-v3
+panel_script=$root/usr/local/sbin/zd1200-ping-panel.js
+[ -r "$panel_script" ] || exit 1
+
+for bundle_name in app ruckus; do
+    bundle=$root/web/build/$bundle_name.js
+    compressed=$bundle.gz
+    changed=0
+    [ -r "$bundle" ] || continue
+
+    # Normalize all earlier attempts, including the direct standalone link
+    # left in the legacy bundle and Terra's altered group identifier.
+    "$bb" sed -i \
+        -e 's@{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"/admin10/zd1200-ping-monitor.html"}@{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"javascript:window.zd1200ShowPingMonitor()"}@g' \
+        -e 's@{id:"zd1200_ping_monitor",title:"Ping Monitor",location:"zd1200_ping_monitor",url:"/admin10/app.jsp#zd1200_ping_monitor"}@{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"javascript:window.zd1200ShowPingMonitor()"}@g' \
+        -e 's@id:"TROUBLESHOOTING",title:Msg.CF_TROUBLESHOOTING||"TROUBLESHOOTING"@id:"Troubleshooting",title:Msg.CF_Troubleshooting||"Troubleshooting"@g' \
+        "$bundle"
+    changed=1
+
+    if ! "$bb" grep -q "$marker" "$bundle"; then
+        if [ "$bundle_name" = app ]; then
+            "$bb" sed -i \
+                -e 's|children:\[a,n,r\]})|children:[a,n,r,{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"javascript:window.zd1200ShowPingMonitor()"}]})|g' \
+                -e 's|children:\[n,r\]})|children:[n,r,{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"javascript:window.zd1200ShowPingMonitor()"}]})|g' \
+                "$bundle"
+        else
+            "$bb" sed -i \
+                -e 's|children:\[n,i,r\]})|children:[n,i,r,{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"javascript:window.zd1200ShowPingMonitor()"}]})|g' \
+                -e 's|children:\[i,r\]})|children:[i,r,{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"javascript:window.zd1200ShowPingMonitor()"}]})|g' \
+                "$bundle"
+        fi
+    fi
+    if ! "$bb" grep -q "$marker" "$bundle"; then
+        echo "ZD Ping Monitor: $bundle_name.js menu signature not found" >/dev/console
+        exit 1
+    fi
+
+    # Remove the one previously appended Ping Monitor loader, if present.
+    # The vendor webpack bundle is one line; the appended loader starts with
+    # an IIFE at the end of that line and occupies the following lines.
+    if "$bb" grep -q 'var frameId="zd1200-ping-monitor-frame"' "$bundle" \
+        && ! "$bb" grep -q "$panel_marker" "$bundle"; then
+        clean_tmp=$bundle.clean.$$
+        if "$bb" awk '
+            BEGIN { dropping=0 }
+            !dropping && /;\(function\(\)\{$/ {
+                sub(/;\(function\(\)\{$/, "")
+                print
+                dropping=1
+                next
+            }
+            dropping {
+                if ($0 == "})();") dropping=0
+                next
+            }
+            { print }
+        ' "$bundle" > "$clean_tmp"; then
+            "$bb" chmod 644 "$clean_tmp"
+            "$bb" mv -f "$clean_tmp" "$bundle"
+        else
+            "$bb" rm -f "$clean_tmp"
+            exit 1
+        fi
+    fi
+    if ! "$bb" grep -q "$panel_marker" "$bundle"; then
+        "$bb" cat "$panel_script" >> "$bundle"
+    fi
+
+    if [ "$changed" = 1 ] && [ -e "$compressed" ]; then
+        temporary=$compressed.tmp.$$
+        if "$bb" gzip -c "$bundle" > "$temporary"; then
+            "$bb" chmod 644 "$temporary"
+            "$bb" mv -f "$temporary" "$compressed"
+        else
+            "$bb" rm -f "$temporary"
+            exit 1
+        fi
+    fi
+done
+ZD_PING_MENU_PATCH_V3
+        # V4 deliberately stops behaving like an overlay. Both UI families
+        # navigate to the stock Network Connectivity JSP, whose normal header
+        # and left navigation provide the shell. On the dedicated hash, only
+        # that page's main content is replaced with the report iframe.
+        /bin/busybox cat > /newroot/usr/local/sbin/zd1200-ping-panel-v4.js <<'ZD_PING_PANEL_V4'
+;(function(){
+var targetHash="#zd1200_ping_monitor";
+var frameId="zd1200-ping-monitor-frame";
+var panelVersion="zd1200-ping-monitor-content-v4";
+var mounted=false;
+var originalTitle=document.title;
+function isTarget(){return window.location.hash===targetHash;}
+function pingMenuItem(){
+    var titles=document.querySelectorAll(".rks-menulist__title");
+    for(var i=0;i<titles.length;i++){
+        if((titles[i].textContent||"").replace(/^\s+|\s+$/g,"")==="Ping Monitor"){
+            var item=titles[i];
+            while(item&&item.tagName!=="LI")item=item.parentNode;
+            return item;
+        }
+    }
+    return null;
+}
+function markPingActive(){
+    var ping=pingMenuItem();
+    if(!ping)return;
+    var active=document.querySelectorAll("li.rks-menulist__menu--active");
+    for(var i=0;i<active.length;i++){
+        if(active[i]!==ping)active[i].classList.remove("rks-menulist__menu--active");
+    }
+    ping.classList.add("rks-menulist__menu--active");
+}
+function sizeFrame(main,frame){
+    var top=main.getBoundingClientRect().top;
+    frame.style.height=Math.max(320,window.innerHeight-Math.max(0,top))+"px";
+}
+function mountPingMonitor(){
+    if(!isTarget()||!document.body)return;
+    var main=document.getElementById("main-content");
+    if(!main)return;
+    var frame=document.getElementById(frameId);
+    if(!frame||frame.parentNode!==main){
+        while(main.firstChild)main.removeChild(main.firstChild);
+        main.style.paddingTop="0";
+        main.style.paddingRight="0";
+        main.style.minHeight="0";
+        main.style.background="#fafafa";
+        frame=document.createElement("iframe");
+        frame.id=frameId;
+        frame.title="Ping Monitor";
+        frame.src="/admin10/zd1200-ping-monitor.html";
+        frame.style.cssText="display:block;position:static;width:100%;border:0;background:#fafafa;";
+        main.appendChild(frame);
+    }
+    mounted=true;
+    document.title="Ping Monitor - ZoneDirector";
+    sizeFrame(main,frame);
+    markPingActive();
+}
+function hashChanged(){
+    if(isTarget())mountPingMonitor();
+    else if(mounted){
+        document.title=originalTitle;
+        window.location.reload();
+    }
+}
+window.addEventListener("hashchange",hashChanged,false);
+window.addEventListener("resize",mountPingMonitor,false);
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",mountPingMonitor,false);
+else mountPingMonitor();
+window.setInterval(mountPingMonitor,250);
+})();
+ZD_PING_PANEL_V4
+        /bin/busybox chmod 644 /newroot/usr/local/sbin/zd1200-ping-panel-v4.js
+        /bin/busybox cat > /newroot/usr/local/sbin/zd1200-patch-ping-menu <<'ZD_PING_MENU_PATCH_V4'
+#!/bin/sh
+root=${1:-}
+if [ -n "$root" ]; then
+    bb=/bin/busybox
+else
+    bb=/usr/local/sbin/busybox
+fi
+marker=zd1200_ping_monitor
+panel_marker=zd1200-ping-monitor-content-v4
+panel_script=$root/usr/local/sbin/zd1200-ping-panel-v4.js
+[ -r "$panel_script" ] || exit 1
+
+for bundle_name in app ruckus; do
+    bundle=$root/web/build/$bundle_name.js
+    compressed=$bundle.gz
+    [ -r "$bundle" ] || continue
+
+    # All menu variants now use a real URL. This makes transitions from SPA
+    # and JSP pages identical and gives browser history ordinary semantics.
+    "$bb" sed -i \
+        -e 's@{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"/admin10/zd1200-ping-monitor.html"}@{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"/admin10/admin_pingtool.jsp#zd1200_ping_monitor"}@g' \
+        -e 's@{id:"zd1200_ping_monitor",title:"Ping Monitor",location:"zd1200_ping_monitor",url:"/admin10/app.jsp#zd1200_ping_monitor"}@{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"/admin10/admin_pingtool.jsp#zd1200_ping_monitor"}@g' \
+        -e 's@{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"javascript:window.zd1200ShowPingMonitor()"}@{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"/admin10/admin_pingtool.jsp#zd1200_ping_monitor"}@g' \
+        -e 's@id:"TROUBLESHOOTING",title:Msg.CF_TROUBLESHOOTING||"TROUBLESHOOTING"@id:"Troubleshooting",title:Msg.CF_Troubleshooting||"Troubleshooting"@g' \
+        "$bundle"
+
+    if ! "$bb" grep -q "$marker" "$bundle"; then
+        if [ "$bundle_name" = app ]; then
+            "$bb" sed -i \
+                -e 's|children:\[a,n,r\]})|children:[a,n,r,{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"/admin10/admin_pingtool.jsp#zd1200_ping_monitor"}]})|g' \
+                -e 's|children:\[n,r\]})|children:[n,r,{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"/admin10/admin_pingtool.jsp#zd1200_ping_monitor"}]})|g' \
+                "$bundle"
+        else
+            "$bb" sed -i \
+                -e 's|children:\[n,i,r\]})|children:[n,i,r,{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"/admin10/admin_pingtool.jsp#zd1200_ping_monitor"}]})|g' \
+                -e 's|children:\[i,r\]})|children:[i,r,{id:"zd1200_ping_monitor",title:"Ping Monitor",url:"/admin10/admin_pingtool.jsp#zd1200_ping_monitor"}]})|g' \
+                "$bundle"
+        fi
+    fi
+    if ! "$bb" grep -q "$marker" "$bundle"; then
+        echo "ZD Ping Monitor: $bundle_name.js menu signature not found" >/dev/console
+        exit 1
+    fi
+
+    # Strip the earlier appended overlay implementation from each bundle.
+    if "$bb" grep -q 'var frameId="zd1200-ping-monitor-frame"' "$bundle"; then
+        clean_tmp=$bundle.clean.$$
+        if "$bb" awk '
+            BEGIN { dropping=0 }
+            !dropping && /;\(function\(\)\{$/ {
+                sub(/;\(function\(\)\{$/, "")
+                print
+                dropping=1
+                next
+            }
+            dropping {
+                if ($0 == "})();") dropping=0
+                next
+            }
+            { print }
+        ' "$bundle" > "$clean_tmp"; then
+            "$bb" chmod 644 "$clean_tmp"
+            "$bb" mv -f "$clean_tmp" "$bundle"
+        else
+            "$bb" rm -f "$clean_tmp"
+            exit 1
+        fi
+    fi
+
+    # Only legacy pages need the content-hosting code. The SPA bundle simply
+    # follows the menu URL into this stable shell.
+    if [ "$bundle_name" = ruckus ] && ! "$bb" grep -q "$panel_marker" "$bundle"; then
+        "$bb" cat "$panel_script" >> "$bundle"
+    fi
+
+    if [ -e "$compressed" ]; then
+        temporary=$compressed.tmp.$$
+        if "$bb" gzip -c "$bundle" > "$temporary"; then
+            "$bb" chmod 644 "$temporary"
+            "$bb" mv -f "$temporary" "$compressed"
+        else
+            "$bb" rm -f "$temporary"
+            exit 1
+        fi
+    fi
+done
+ZD_PING_MENU_PATCH_V4
+        /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-patch-ping-menu
+        # /web is read-only after the vendor pivot. Apply the patch now while
+        # /newroot is deliberately remounted writable; the late call below is
+        # then an idempotent verification against the selected active root.
+        /bin/sh /newroot/usr/local/sbin/zd1200-patch-ping-menu /newroot || true
+        /bin/busybox mkdir -p /data/zd1200-ping-monitor
+        /bin/busybox rm -f /newroot/web/admin10/zd1200-ping-monitor-snapshot.json
+        /bin/busybox ln -s /writable/zd1200-ping-monitor/snapshot.json \
+            /newroot/web/admin10/zd1200-ping-monitor-snapshot.json
+        /bin/busybox rm -f /newroot/web/admin10/zd1200-ping-monitor-snapshot-index.json
+        /bin/busybox ln -s /writable/zd1200-ping-monitor/snapshot-index.json \
+            /newroot/web/admin10/zd1200-ping-monitor-snapshot-index.json
+        /bin/busybox rm -f /newroot/web/admin10/zd1200-ping-monitor-snapshots
+        /bin/busybox ln -s /writable/zd1200-ping-monitor/snapshots \
+            /newroot/web/admin10/zd1200-ping-monitor-snapshots
+        # The monitor records raw ping observations only. Network state is
+        # retained separately as three opaque stock XML responses, so later
+        # analysis can compare any two time points without assuming in advance
+        # which configuration fields matter.
+        /bin/busybox cat > /newroot/etc/init.d/S99zd_ping_monitor <<'ZD_PING_MONITOR_INIT'
 #!/bin/sh
 (
-    output=/writable/zd1200-analytics/snapshot.json
-    database=/tmp/sqlited/statistic.db
-    database_snapshot=/writable/zd1200-analytics/statistic.db
-    mkdir -p /writable/zd1200-analytics
-    while :; do
-        temporary="$output.tmp.$$"
-        attempts=0
-        while [ "$attempts" -lt 60 ]; do
-            if [ -s "$database" ]; then
-                cp "$database" "$database_snapshot" 2>/dev/null || true
-                [ -s "$database_snapshot" ] \
-                    && /usr/local/sbin/zd1200-analytics-snapshot > "$temporary" \
-                    && mv -f "$temporary" "$output" && break
+    # Patch the bundle actually loaded by app.jsp after the vendor root is
+    # active. This also regenerates app.js.gz so content negotiation cannot
+    # serve an unpatched copy.
+    /usr/local/sbin/zd1200-patch-ping-menu || true
+    output=/writable/zd1200-ping-monitor/snapshot.json
+    snapshot_index=/writable/zd1200-ping-monitor/snapshot-index.json
+    snapshot_dir=/writable/zd1200-ping-monitor/snapshots
+    configured_targets=/writable/zd1200-ping-monitor/client-targets.conf
+    intervals=/writable/zd1200-ping-monitor/intervals.conf
+    client_snapshot=
+    ping_interval=60
+    snapshot_interval=300
+    last_ping=0
+    last_snapshot=0
+    mkdir -p /writable/zd1200-ping-monitor "$snapshot_dir"
+    if [ -r "$intervals" ]; then
+        configured_ping=$(sed -n 's/^PING_INTERVAL_SECONDS=//p' "$intervals" | head -n 1)
+        configured_snapshot=$(sed -n 's/^SNAPSHOT_INTERVAL_SECONDS=//p' "$intervals" | head -n 1)
+        case "$configured_ping" in ''|*[!0-9]*) ;; *) [ "$configured_ping" -ge 30 ] && [ "$configured_ping" -le 3600 ] && ping_interval=$configured_ping;; esac
+        case "$configured_snapshot" in ''|*[!0-9]*) ;; *) [ "$configured_snapshot" -ge 30 ] && [ "$configured_snapshot" -le 3600 ] && snapshot_interval=$configured_snapshot;; esac
+    fi
+    if [ -r "$configured_targets" ]; then
+        old_ifs=$IFS
+        IFS=';'
+        for target in $(cat "$configured_targets"); do
+            IFS='|'
+            set -- $target
+            if [ "$#" -eq 3 ]; then
+                /usr/local/sbin/zd1200-ping-monitor add-client "$1" "$2" "$3" 2>/dev/null || true
             fi
-            attempts=$((attempts + 1))
-            sleep 2
         done
-        if [ ! -s "$output" ]; then
-            printf '{"status":"waiting","database_present":false}\n' > "$temporary"
-            mv -f "$temporary" "$output"
+        IFS=$old_ifs
+    fi
+    while :; do
+        # Refresh the forensic evidence every five minutes. The collector is
+        # inert until its root-only credentials file has been provisioned.
+        now=$(date +%s)
+        if [ $((now - last_snapshot)) -ge "$snapshot_interval" ]; then
+            # A failed collection must not reuse an old association view. The
+            # helper records that case as "unknown", rather than presenting a
+            # stale client state as current evidence.
+            client_snapshot=
+            if /usr/local/sbin/zd1200-network-snapshot-collect 2>/dev/null; then
+                client_snapshot=$(ls -1t "$snapshot_dir"/*-client.xml 2>/dev/null | head -n 1 || true)
+            fi
+            /usr/local/sbin/zd1200-ping-monitor prune-snapshots 2>/dev/null || true
+            temporary="$snapshot_index.tmp.$$"
+            if /usr/local/sbin/zd1200-ping-monitor snapshot-index > "$temporary"; then
+                mv -f "$temporary" "$snapshot_index"
+            else
+                rm -f "$temporary"
+            fi
+            last_snapshot=$now
         fi
-        sleep 3600
+        if [ $((now - last_ping)) -ge "$ping_interval" ]; then
+            /usr/local/sbin/zd1200-ping-monitor tick "$client_snapshot" 2>/dev/null || true
+            temporary="$output.tmp.$$"
+            if /usr/local/sbin/zd1200-ping-monitor pings-json > "$temporary"; then
+                mv -f "$temporary" "$output"
+            else
+                rm -f "$temporary"
+            fi
+            last_ping=$now
+        fi
+        sleep 30
     done
 ) &
 exit 0
-ZD_ANALYTICS_SNAPSHOT_INIT
-        /bin/busybox chmod 755 /newroot/etc/init.d/S99zd_analytics_snapshot
+ZD_PING_MONITOR_INIT
+        /bin/busybox chmod 755 /newroot/etc/init.d/S99zd_ping_monitor
     fi
     # Keep the vendor account database path. In particular, legacy AP-image
     # FTP authenticates its internal service account through this writable

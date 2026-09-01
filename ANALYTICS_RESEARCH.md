@@ -1,9 +1,8 @@
 # ZoneDirector analytics research
 
-This note records the feasibility investigation and the first implemented
-data path for optional reporting in the ZoneDirector 10.5.1.0.282 web
-interface. The current implementation is deliberately a small read-only
-snapshot rather than a finished analytics UI.
+This note records the feasibility investigation for optional reporting in the
+ZoneDirector 10.5.1.0.282 web interface and the implemented Ping Monitor data
+path.
 
 ## Existing data
 
@@ -67,31 +66,45 @@ adding that path, validate both the stock authentication model for custom
 `admin10` routes and a way to expose the existing hourly data without adding
 client/AP polling or a second history database.
 
-## Implemented: static read-only snapshot
+## Implemented: Ping Monitor data collector
 
-The runtime initramfs installs `/admin10/zd1200-analytics.html` on every guest
-boot. A late, root-owned init script waits for `statistic.db`, copies it to a
-private file on the writable partition, runs a small statically linked i386
-helper against that stable copy, and atomically writes its JSON next to the
-copy. It refreshes the result once per hour, matching the source database's
-hourly cadence. `/web/admin10/zd1200-analytics-snapshot.json` is a symlink to
-that JSON, so the page can fetch it from the same origin even though the main
-root filesystem is immutable. The copy is a transient input snapshot, not a
-new history database.
+The runtime installs a separate local ping-monitor service at
+`/writable/zd1200-ping-monitor/`. It owns `pings.db`, intentionally separate
+from the vendor accounting database because ping observations do not exist in
+ZoneDirector's data store. The only retained ping history is the individual
+raw observation: timestamp, target, response/timeout/absent state, and RTT.
+Rows older than 30 days are removed. Hourly p50/p99 values are calculated only
+when the static page asks for its fixed JSON snapshot; they are not stored as a
+second history or roll-up table.
 
-The helper has no command-line arguments and opens the copy with
-`SQLITE_OPEN_READONLY`. It is built as a static 32-bit musl binary because a
-modern glibc static binary cannot reliably access files from the controller's
-Linux 2.6.32 guest. Its initial fixed output reports only database
-presence/size and exposes fixed 24-hour Tx/Rx totals plus hourly points grouped
-by client MAC, AP ID, and SSID ID from `statis_client_h`. The result retains
-those IDs and resolves AP names and SSID names from the controller's existing
-`ap-list.xml` and `wlansvc-list.xml`; a client row similarly includes the
-controller's recorded device model when present. It is intentionally not a
-general SQL endpoint, does not poll APs or clients, and does not create a
-second history database. It is not linked from the stock UI yet.
+APs with valid IPv4 addresses are added as enabled targets from the existing
+controller AP list. Clients are opt-in and are keyed by MAC address plus their
+configured name and IPv4 address. A client absent from a freshly collected
+stock client view is recorded as `not_associated` and is not pinged; a present
+client that does not answer ICMP is a `timeout`. If the current client view
+could not be collected, the observation is `unknown` and is not counted as an
+ICMP failure. This avoids confusing normal laptop absence or a collector gap
+with a network-quality failure.
 
-Client responsiveness/ping monitoring was deliberately not implemented. It
-requires a separate design: APs could be enabled by default, while client
-probes should be opt-in and record hourly latency percentiles with timeouts
-treated as 1000 ms.
+Every five minutes a root-owned local collector authenticates only to
+`https://127.0.0.1` using the optional dedicated Monitoring Admin account. It
+stores *unparsed* timestamped copies of the three stock read-only XML replies:
+
+- AP summary;
+- wireless-client summary; and
+- mesh view.
+
+The collector accepts no browser input, cannot send credentials to a routed or
+environment-selected destination, and never creates structured configuration
+history. The Ping Monitor page shows target MAC/IP/name, 24-hour log-scale
+p50-to-p99 bars, timeout/absence counts, and a browser-side difference between
+any two raw snapshot timestamps. The browser parses only enough XML to match
+records by MAC and compare non-volatile attributes; the preserved XML remains
+the forensic source of truth for later human or LLM investigation.
+
+The static Webs extension cannot safely write the target SQLite database. The
+helper therefore exposes narrow local maintenance commands for the forthcoming
+settings bridge: `add-client MAC IP NAME` and `set-enabled ID 0|1`. They accept
+data values only, never a shell command. A direct Settings UI requires a
+separately validated authenticated write bridge; it is deliberately not faked
+by the static page.

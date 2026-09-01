@@ -22,7 +22,7 @@ RUN apt-get update \
     && git -C /src checkout --detach FETCH_HEAD \
     && make -C /src/src/squashfs4.0-ruckus-lzma -j"$(nproc)"
 
-FROM --platform=$ANALYTICS_HELPER_PLATFORM debian:13-slim AS analytics-snapshot-helper
+FROM --platform=$ANALYTICS_HELPER_PLATFORM debian:13-slim AS ping-monitor-helper
 
 ARG DEBIAN_FRONTEND=noninteractive
 # Use a SQLite release contemporary with the ZD1200's Linux 2.6.32 guest.
@@ -44,15 +44,16 @@ RUN apt-get update \
     && echo "${SQLITE_AMALGAMATION_SHA256}  /tmp/sqlite-amalgamation.zip" | sha256sum -c - \
     && unzip -q /tmp/sqlite-amalgamation.zip -d /src
 
-COPY analytics/zd1200-analytics-snapshot.c /src/zd1200-analytics-snapshot.c
+COPY analytics/zd1200-ping-monitor.c \
+     /src/
 
 RUN mkdir -p /out \
     && musl-gcc -std=c99 -Os -static -s \
         -DSQLITE_OMIT_LOAD_EXTENSION \
         -I"/src/sqlite-amalgamation-${SQLITE_AMALGAMATION}" \
-        /src/zd1200-analytics-snapshot.c \
+        /src/zd1200-ping-monitor.c \
         "/src/sqlite-amalgamation-${SQLITE_AMALGAMATION}/sqlite3.c" \
-        -o /out/zd1200-analytics-snapshot
+        -o /out/zd1200-ping-monitor
 
 FROM debian:13-slim
 
@@ -88,9 +89,9 @@ COPY --from=ruckus-squashfs-tools \
      /src/src/squashfs4.0-ruckus-lzma/mksquashfs \
      /src/src/squashfs4.0-ruckus-lzma/unsquashfs \
      /usr/local/lib/zd1200/ruckus-squashfs/
-COPY --from=analytics-snapshot-helper \
-     /out/zd1200-analytics-snapshot \
-     /opt/zd1200/zd1200-analytics-snapshot
+COPY --from=ping-monitor-helper \
+     /out/zd1200-ping-monitor \
+     /opt/zd1200/
 
 RUN chmod +x /opt/zd1200/boot-initrd-handoff \
         /opt/zd1200/*.sh /opt/zd1200/*.py \
