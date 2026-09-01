@@ -119,6 +119,8 @@ record, validates both enable flags and the 30–3600 second bounds, and mirrors
 the last valid values to a mode-0600 settings cache. This closes the small
 window between the web commit and the monitor's next 30-second pass while
 remaining independent of journal rotation. No dedicated role or user is
-required. Live testing proved that the preference survives a full
+required. Both collectors are disabled by default on a fresh controller and
+start only after an administrator explicitly enables them. Live testing
+proved that the preference survives a full
 container/guest reboot and that `getstatd` returns the same AP/client/mesh
 payloads wrapped by the authenticated HTTPS API.

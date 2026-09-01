@@ -871,8 +871,10 @@ ZD_PING_MENU_PATCH_V4
     settings_status=/writable/zd1200-ping-monitor/settings.json
     client_snapshot=
     preference_updated_at=
-    ping_enabled=1
-    snapshot_enabled=1
+    # Collection is opt-in on a fresh controller. A saved native preference
+    # remains authoritative after the administrator enables either collector.
+    ping_enabled=0
+    snapshot_enabled=0
     ping_interval=60
     snapshot_interval=300
     last_ping=0

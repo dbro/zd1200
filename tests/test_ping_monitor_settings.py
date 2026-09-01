@@ -59,6 +59,8 @@ class PingMonitorSettingsTests(unittest.TestCase):
         self.assertIn("HAS_NATIVE_SETTINGS", handoff)
         self.assertNotIn("native_settings=/writable", handoff)
         self.assertIn('apply_native_settings "$native_values"', handoff)
+        self.assertIn("ping_enabled=0", handoff)
+        self.assertIn("snapshot_enabled=0", handoff)
         self.assertIn('"$configured_ping" -ge 30', handoff)
         self.assertIn('"$configured_ping" -le 3600', handoff)
 
