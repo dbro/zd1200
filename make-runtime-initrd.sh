@@ -93,6 +93,7 @@ sources=(
     "$work_dir/zd_root_ssh.py"
     "$work_dir/analytics/ping-monitor.html"
     "$work_dir/analytics/network-snapshot-collect.sh"
+    "$work_dir/analytics/ping-monitor-settings-sync.sh"
     "$work_dir/zd1200-ping-monitor"
 )
 if [ -f "$payload" ]; then
@@ -132,6 +133,7 @@ cp "$work_dir/zd-memory-snapshot.sh" "$staging/zd-memory-snapshot.sh"
 mkdir -p "$staging/zd-analytics"
 cp "$work_dir/analytics/ping-monitor.html" "$staging/zd-analytics/ping-monitor.html"
 cp "$work_dir/analytics/network-snapshot-collect.sh" "$staging/zd-analytics/network-snapshot-collect.sh"
+cp "$work_dir/analytics/ping-monitor-settings-sync.sh" "$staging/zd-analytics/ping-monitor-settings-sync.sh"
 cp "$work_dir/zd1200-ping-monitor" "$staging/zd-analytics/ping-monitor"
 if [ -f "$payload" ]; then
     mkdir -p "$staging/zd-payload"
@@ -165,7 +167,8 @@ fi
 } > "$staging/zd-runtime-options"
 
 chmod 755 "$staging/bin/boot-handoff" "$staging/zd-analytics/ping-monitor" \
-    "$staging/zd-analytics/network-snapshot-collect.sh"
+    "$staging/zd-analytics/network-snapshot-collect.sh" \
+    "$staging/zd-analytics/ping-monitor-settings-sync.sh"
 chmod 755 "$staging/zd-controller-wrapper.sh" "$staging/zd-memory-snapshot.sh"
 
 gzip -dc "$base_initrd" > "$combined"

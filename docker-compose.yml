@@ -59,7 +59,8 @@ services:
       ZD_SNAPSHOT_PASSWORD: ${ZD_SNAPSHOT_PASSWORD:-}
       # Semicolon-separated opt-in client targets: MAC|IPv4|friendly name.
       ZD_PING_CLIENT_TARGETS: ${ZD_PING_CLIENT_TARGETS:-}
-      # Ping Monitor timing, validated during runtime-initrd construction.
+      # Initial Ping Monitor timing. Page settings persist in ZD and override
+      # these defaults after the first save.
       ZD_PING_INTERVAL_SECONDS: ${ZD_PING_INTERVAL_SECONDS:-60}
       ZD_SNAPSHOT_INTERVAL_SECONDS: ${ZD_SNAPSHOT_INTERVAL_SECONDS:-60}
       # Work around the 2.6.32 tickless-idle spin demonstrated in cpu-study.

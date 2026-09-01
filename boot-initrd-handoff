@@ -324,10 +324,12 @@ if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
     /bin/busybox cp -f /zd-memory-snapshot.sh /newroot/etc/init.d/S98memory_snapshot
     /bin/busybox chmod 755 /newroot/etc/init.d/S98memory_snapshot
     # The monitor publishes fixed same-origin JSON and raw configuration
-    # captures. It accepts no browser input and needs no CGI or EJS extension.
+    # captures. Its settings form writes only through ZD's authenticated native
+    # preference endpoint; no custom CGI or EJS extension is required.
     if [ -r /zd-analytics/ping-monitor.html ] \
         && [ -x /zd-analytics/ping-monitor ] \
-        && [ -x /zd-analytics/network-snapshot-collect.sh ]; then
+        && [ -x /zd-analytics/network-snapshot-collect.sh ] \
+        && [ -x /zd-analytics/ping-monitor-settings-sync.sh ]; then
         /bin/busybox mkdir -p /newroot/usr/local/sbin
         # The selected vendor root does not provide a standalone sed utility.
         # Preserve the static BusyBox from this handoff environment for the
@@ -338,6 +340,8 @@ if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
         /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-ping-monitor
         /bin/busybox cp -f /zd-analytics/network-snapshot-collect.sh /newroot/usr/local/sbin/zd1200-network-snapshot-collect
         /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-network-snapshot-collect
+        /bin/busybox cp -f /zd-analytics/ping-monitor-settings-sync.sh /newroot/usr/local/sbin/zd1200-ping-monitor-settings-sync
+        /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-ping-monitor-settings-sync
         /bin/busybox cp -f /zd-analytics/ping-monitor.html /newroot/web/admin10/zd1200-ping-monitor.html
         /bin/busybox chmod 644 /newroot/web/admin10/zd1200-ping-monitor.html
         # app.jsp loads app.js for the regular console. Keep the menu patch in
@@ -849,6 +853,9 @@ ZD_PING_MENU_PATCH_V4
         /bin/busybox rm -f /newroot/web/admin10/zd1200-ping-monitor-snapshot-index.json
         /bin/busybox ln -s /writable/zd1200-ping-monitor/snapshot-index.json \
             /newroot/web/admin10/zd1200-ping-monitor-snapshot-index.json
+        /bin/busybox rm -f /newroot/web/admin10/zd1200-ping-monitor-settings.json
+        /bin/busybox ln -s /writable/zd1200-ping-monitor/settings.json \
+            /newroot/web/admin10/zd1200-ping-monitor-settings.json
         /bin/busybox rm -f /newroot/web/admin10/zd1200-ping-monitor-snapshots
         /bin/busybox ln -s /writable/zd1200-ping-monitor/snapshots \
             /newroot/web/admin10/zd1200-ping-monitor-snapshots
@@ -868,18 +875,71 @@ ZD_PING_MENU_PATCH_V4
     snapshot_dir=/writable/zd1200-ping-monitor/snapshots
     configured_targets=/writable/zd1200-ping-monitor/client-targets.conf
     intervals=/writable/zd1200-ping-monitor/intervals.conf
+    settings_status=/writable/zd1200-ping-monitor/settings.json
     client_snapshot=
+    preference_updated_at=
+    ping_enabled=1
+    snapshot_enabled=1
     ping_interval=60
     snapshot_interval=300
     last_ping=0
     last_snapshot=0
+    settings_source=defaults
     mkdir -p /writable/zd1200-ping-monitor "$snapshot_dir"
+    # Remove the obsolete persistent transfer files from the earlier bridge.
+    rm -f /writable/zd1200-ping-monitor/native-settings.conf \
+        /writable/zd1200-ping-monitor/.settings-session.cookie \
+        /writable/zd1200-ping-monitor/.settings-csrf
     if [ -r "$intervals" ]; then
         configured_ping=$(sed -n 's/^PING_INTERVAL_SECONDS=//p' "$intervals" | head -n 1)
         configured_snapshot=$(sed -n 's/^SNAPSHOT_INTERVAL_SECONDS=//p' "$intervals" | head -n 1)
         case "$configured_ping" in ''|*[!0-9]*) ;; *) [ "$configured_ping" -ge 30 ] && [ "$configured_ping" -le 3600 ] && ping_interval=$configured_ping;; esac
         case "$configured_snapshot" in ''|*[!0-9]*) ;; *) [ "$configured_snapshot" -ge 30 ] && [ "$configured_snapshot" -le 3600 ] && snapshot_interval=$configured_snapshot;; esac
     fi
+    apply_native_settings() {
+        native_values=$1
+        old_ping_enabled=$ping_enabled
+        old_snapshot_enabled=$snapshot_enabled
+        if [ -n "$native_values" ]; then
+            configured_has_native=$(printf '%s\n' "$native_values" | sed -n 's/^HAS_NATIVE_SETTINGS=//p' | head -n 1)
+            configured_ping_enabled=$(printf '%s\n' "$native_values" | sed -n 's/^PING_ENABLED=//p' | head -n 1)
+            configured_ping=$(printf '%s\n' "$native_values" | sed -n 's/^PING_INTERVAL_SECONDS=//p' | head -n 1)
+            configured_snapshot_enabled=$(printf '%s\n' "$native_values" | sed -n 's/^SNAPSHOT_ENABLED=//p' | head -n 1)
+            configured_snapshot=$(printf '%s\n' "$native_values" | sed -n 's/^SNAPSHOT_INTERVAL_SECONDS=//p' | head -n 1)
+            configured_updated=$(printf '%s\n' "$native_values" | sed -n 's/^PREFERENCE_UPDATED_AT=//p' | head -n 1)
+            valid_native=1
+            [ "$configured_has_native" = 1 ] || valid_native=0
+            case "$configured_ping_enabled" in 0|1) ;; *) valid_native=0;; esac
+            case "$configured_snapshot_enabled" in 0|1) ;; *) valid_native=0;; esac
+            case "$configured_updated" in ''|*[!0-9]*) valid_native=0;; esac
+            case "$configured_ping" in ''|*[!0-9]*) valid_native=0;; *) [ "$configured_ping" -ge 30 ] && [ "$configured_ping" -le 3600 ] || valid_native=0;; esac
+            case "$configured_snapshot" in ''|*[!0-9]*) valid_native=0;; *) [ "$configured_snapshot" -ge 30 ] && [ "$configured_snapshot" -le 3600 ] || valid_native=0;; esac
+            if [ "$valid_native" = 1 ]; then
+                ping_enabled=$configured_ping_enabled
+                ping_interval=$configured_ping
+                snapshot_enabled=$configured_snapshot_enabled
+                snapshot_interval=$configured_snapshot
+                preference_updated_at=$configured_updated
+                settings_source=zd-preference
+            fi
+        fi
+        [ "$old_ping_enabled" = 0 ] && [ "$ping_enabled" = 1 ] && last_ping=0
+        [ "$old_snapshot_enabled" = 0 ] && [ "$snapshot_enabled" = 1 ] && last_snapshot=0
+    }
+    publish_settings() {
+        ping_boolean=false
+        snapshot_boolean=false
+        [ "$ping_enabled" = 1 ] && ping_boolean=true
+        [ "$snapshot_enabled" = 1 ] && snapshot_boolean=true
+        updated_json=null
+        [ -n "$preference_updated_at" ] && updated_json=$preference_updated_at
+        temporary="$settings_status.tmp.$$"
+        printf '{"status":"ok","ping_enabled":%s,"ping_interval":%s,"snapshot_enabled":%s,"snapshot_interval":%s,"source":"%s","preference_updated_at":%s,"checked_at":%s}\n' \
+            "$ping_boolean" "$ping_interval" "$snapshot_boolean" \
+            "$snapshot_interval" "$settings_source" "$updated_json" \
+            "$(date +%s)" > "$temporary"
+        mv -f "$temporary" "$settings_status"
+    }
     if [ -r "$configured_targets" ]; then
         old_ifs=$IFS
         IFS=';'
@@ -892,11 +952,19 @@ ZD_PING_MENU_PATCH_V4
         done
         IFS=$old_ifs
     fi
+    native_values=$(/usr/local/sbin/zd1200-ping-monitor-settings-sync 2>/dev/null || true)
+    apply_native_settings "$native_values"
+    publish_settings
     while :; do
-        # Refresh the forensic evidence every five minutes. The collector is
-        # inert until its root-only credentials file has been provisioned.
+        # Read and validate the persistent ZD preference directly through the
+        # Monitoring Admin session. Keep the last valid value in process memory
+        # if ZD is temporarily unavailable; there is no settings transfer file.
+        native_values=$(/usr/local/sbin/zd1200-ping-monitor-settings-sync 2>/dev/null || true)
+        apply_native_settings "$native_values"
+        publish_settings
         now=$(date +%s)
-        if [ $((now - last_snapshot)) -ge "$snapshot_interval" ]; then
+        if [ "$snapshot_enabled" = 1 ] \
+            && [ $((now - last_snapshot)) -ge "$snapshot_interval" ]; then
             # A failed collection must not reuse an old association view. The
             # helper records that case as "unknown", rather than presenting a
             # stale client state as current evidence.
@@ -912,8 +980,11 @@ ZD_PING_MENU_PATCH_V4
                 rm -f "$temporary"
             fi
             last_snapshot=$now
+        elif [ "$snapshot_enabled" = 0 ]; then
+            client_snapshot=
         fi
-        if [ $((now - last_ping)) -ge "$ping_interval" ]; then
+        if [ "$ping_enabled" = 1 ] \
+            && [ $((now - last_ping)) -ge "$ping_interval" ]; then
             /usr/local/sbin/zd1200-ping-monitor tick "$client_snapshot" 2>/dev/null || true
             temporary="$output.tmp.$$"
             if /usr/local/sbin/zd1200-ping-monitor pings-json > "$temporary"; then

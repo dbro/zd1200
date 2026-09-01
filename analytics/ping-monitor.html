@@ -8,7 +8,7 @@
 <link href="/build/app.css" rel="stylesheet">
 <link href="/ruckus_oem.css" rel="stylesheet">
 <style>
-html,body{min-height:100%;margin:0;background:#fafafa;color:#333}#content-overlay{min-height:100%;overflow:auto;background:#fafafa}#monitor-scroll{min-width:980px;min-height:100%;padding:26px 20px}.monitor-box{position:relative;min-height:calc(100vh - 52px);padding:70px 20px 30px;background:#ebebeb}.monitor-title{position:absolute;top:28px;left:20px;margin:0;color:#909090;font:700 30px/1 'Helvetica Neue',Helvetica,Arial,sans-serif}.monitor-card{margin-bottom:16px;padding:16px 18px;border:1px solid #d8d8d8;background:#fff}.monitor-card:last-child{margin-bottom:0}.monitor-section-title{margin:0 0 12px;color:#333;font-size:16px}.monitor-summary{margin-bottom:14px;color:#666}.filters{display:flex;align-items:flex-end;flex-wrap:wrap;gap:12px;padding:12px 14px;background:#f5f5f5;border:1px solid #ddd}.filters strong{align-self:center;margin-right:4px}.filters label,.range-control{display:flex;align-items:center;gap:6px;margin:0;color:#555;font-weight:normal}.filters input,.filters select,.range-control select{height:30px;padding:4px 8px;border:1px solid #bbb;border-radius:2px;background:#fff;color:#333}.filters input{width:120px}#targets table{width:100%;margin:12px 0 0;border-collapse:collapse;background:#fff}#targets table th,#targets table td{padding:8px;border-bottom:1px solid #ddd;text-align:left;vertical-align:middle}#targets table th{color:#666;background:#f5f5f5;font-weight:bold}#targets table tr[data-id]{cursor:pointer}#targets table tr[data-id]:hover,#targets table tr.selected{background:#e8f2fb}.number{text-align:right!important}.identifier,.note{font:12px/1.4 monospace;color:#666}.chart{width:260px;height:56px}.hint{margin:0 0 12px;padding:10px 12px;border-left:3px solid #2b8de5;background:#f5f5f5;color:#666;line-height:1.5}.range-control{margin-bottom:10px}.timeline{width:100%;height:190px;border:1px solid #ccc;background:#fff;cursor:crosshair}.grid{stroke:#c5c5c5}.pick{stroke:#754a9e;stroke-width:2}#hover,#chosen{padding:7px 0;color:#666}#diff{margin-top:14px}.diff-tabs{border-bottom:1px solid #ccc}.diff-tabs button{margin:0 3px -1px 0;padding:7px 12px;border:1px solid #ccc;background:#eee;color:#444;cursor:pointer}.diff-tabs button.active{border-bottom-color:#fff;background:#fff;font-weight:bold}.diff-tabs label{display:inline-block;margin:0 0 8px 8px;font-weight:normal}.compare{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin:8px 0 20px}.pane{overflow:auto;max-height:420px;border:1px solid #ccc;background:#fff}.pane h4{position:sticky;top:0;margin:0;padding:8px;background:#eee}.xml-line{padding:0 6px;white-space:pre;font:12px/1.4 monospace}.removed{background:#ffe3e3}.added{background:#e0f4e5}@media(max-width:1180px){.filters{align-items:stretch}.compare{grid-template-columns:1fr}.chart{width:210px}}
+html,body{min-height:100%;margin:0;background:#fafafa;color:#333}#content-overlay{min-height:100%;overflow:auto;background:#fafafa}#monitor-scroll{min-width:980px;min-height:100%;padding:26px 20px}.monitor-box{position:relative;min-height:calc(100vh - 52px);padding:70px 20px 30px;background:#ebebeb}.monitor-title{position:absolute;top:28px;left:20px;margin:0;color:#909090;font:700 30px/1 'Helvetica Neue',Helvetica,Arial,sans-serif}.monitor-card{margin-bottom:16px;padding:16px 18px;border:1px solid #d8d8d8;background:#fff}.monitor-card:last-child{margin-bottom:0}.monitor-section-title{margin:0 0 12px;color:#333;font-size:16px}.monitor-summary{margin-bottom:14px;color:#666}.settings-grid{display:flex;align-items:center;flex-wrap:wrap;gap:12px 18px}.settings-grid label{display:flex;align-items:center;gap:7px;margin:0;color:#555;font-weight:normal}.settings-grid input[type=number]{width:86px;height:30px;padding:4px 8px;border:1px solid #bbb;border-radius:2px}.settings-grid button{height:30px;padding:4px 16px}.settings-status{color:#666}.settings-status.error{color:#b33}.settings-note{margin:10px 0 0;color:#777}.filters{display:flex;align-items:flex-end;flex-wrap:wrap;gap:12px;padding:12px 14px;background:#f5f5f5;border:1px solid #ddd}.filters strong{align-self:center;margin-right:4px}.filters label,.range-control{display:flex;align-items:center;gap:6px;margin:0;color:#555;font-weight:normal}.filters input,.filters select,.range-control select{height:30px;padding:4px 8px;border:1px solid #bbb;border-radius:2px;background:#fff;color:#333}.filters input{width:120px}#targets table{width:100%;margin:12px 0 0;border-collapse:collapse;background:#fff}#targets table th,#targets table td{padding:8px;border-bottom:1px solid #ddd;text-align:left;vertical-align:middle}#targets table th{color:#666;background:#f5f5f5;font-weight:bold}#targets table tr[data-id]{cursor:pointer}#targets table tr[data-id]:hover,#targets table tr.selected{background:#e8f2fb}.number{text-align:right!important}.identifier,.note{font:12px/1.4 monospace;color:#666}.chart{width:260px;height:56px}.hint{margin:0 0 12px;padding:10px 12px;border-left:3px solid #2b8de5;background:#f5f5f5;color:#666;line-height:1.5}.range-control{margin-bottom:10px}.timeline{width:100%;height:190px;border:1px solid #ccc;background:#fff;cursor:crosshair}.grid{stroke:#c5c5c5}.pick{stroke:#754a9e;stroke-width:2}#hover,#chosen{padding:7px 0;color:#666}#diff{margin-top:14px}.diff-tabs{border-bottom:1px solid #ccc}.diff-tabs button{margin:0 3px -1px 0;padding:7px 12px;border:1px solid #ccc;background:#eee;color:#444;cursor:pointer}.diff-tabs button.active{border-bottom-color:#fff;background:#fff;font-weight:bold}.diff-tabs label{display:inline-block;margin:0 0 8px 8px;font-weight:normal}.compare{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin:8px 0 20px}.pane{overflow:auto;max-height:420px;border:1px solid #ccc;background:#fff}.pane h4{position:sticky;top:0;margin:0;padding:8px;background:#eee}.xml-line{padding:0 6px;white-space:pre;font:12px/1.4 monospace}.removed{background:#ffe3e3}.added{background:#e0f4e5}@media(max-width:1180px){.filters{align-items:stretch}.compare{grid-template-columns:1fr}.chart{width:210px}}
 </style>
 </head>
 <body>
@@ -16,6 +16,18 @@ html,body{min-height:100%;margin:0;background:#fafafa;color:#333}#content-overla
 <div id="monitor-scroll">
 <section class="main-box monitor-box">
 <h1 class="monitor-title">Ping Monitor</h1>
+<div class="monitor-card">
+<h2 class="monitor-section-title">Settings</h2>
+<form id="settings-form" class="settings-grid">
+<label><input id="ping-enabled" type="checkbox"> Enable ping polling</label>
+<label>Ping interval <input id="ping-interval" type="number" min="30" max="3600" step="1" required> seconds</label>
+<label><input id="snapshot-enabled" type="checkbox"> Enable configuration snapshots</label>
+<label>Snapshot interval <input id="snapshot-interval" type="number" min="30" max="3600" step="1" required> seconds</label>
+<button id="settings-apply" type="submit" class="apply">Apply</button>
+<span id="settings-status" class="settings-status" role="status">Loading settings…</span>
+</form>
+<p class="settings-note">Intervals must be whole seconds from 30 through 3600. Settings are stored as a native ZoneDirector administrator preference and normally take effect within 30 seconds.</p>
+</div>
 <div class="monitor-card">
 <p id="summary" class="monitor-summary">Loading…</p>
 <div class="filters">
@@ -59,6 +71,63 @@ html,body{min-height:100%;margin:0;background:#fafafa;color:#333}#content-overla
 </main>
 <script>
 const $=x=>document.getElementById(x),S=x=>new Date(x*1000).toLocaleString(),W=1000,L=46,R=12,Y=v=>158-Math.max(0,Math.min(1,Math.log10(Math.max(1,v))/3))*142;let M,I,id,range=$('range').value,picks=[],C={clients:{},aps:{}},D,showChangedOnly=false;
+let settingsCsrf;
+function settingsMessage(message,error=false){let node=$('settings-status');node.textContent=message;node.classList.toggle('error',error)}
+function validInterval(value){return Number.isInteger(value)&&value>=30&&value<=3600}
+async function csrfToken(){
+ if(settingsCsrf)return settingsCsrf;
+ try{let token=window.parent&&(window.parent.csfrToken||window.parent.csrfToken);if(token){settingsCsrf=token;return token}}catch(e){}
+ let app=await fetch('/admin10/app.jsp',{credentials:'same-origin',cache:'no-store'}).then(r=>r.text()),match=app.match(/var csfrToken = '([^']+)'/);
+ if(!match)throw new Error('Sign in with an administrator account to edit settings.');
+ return settingsCsrf=match[1];
+}
+async function zdRequest(action,updater,comp,element='',requestAttributes=''){
+ let body=`<ajax-request action="${action}" updater="${updater}" comp="${comp}"${requestAttributes?` ${requestAttributes}`:''}>${element}</ajax-request>`,token=await csrfToken(),response=await fetch('/admin10/_conf.jsp',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'X-CSRF-Token':token,'X-Requested-With':'XMLHttpRequest','Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},body});
+ if(!response.ok)throw new Error(`ZoneDirector returned HTTP ${response.status}.`);
+ let text=await response.text(),doc=new DOMParser().parseFromString(text,'application/xml'),parseError=doc.querySelector('parsererror'),message=doc.querySelector('xmsg');
+ if(parseError)throw new Error('ZoneDirector returned an invalid settings response.');
+ if(message&&Number(message.getAttribute('type'))<0)throw new Error(message.getAttribute('lmsg')||message.getAttribute('msg')||'ZoneDirector rejected the setting.');
+ return doc;
+}
+async function settingsPreference(){
+ let doc=await zdRequest('getconf','zd1200-ping-monitor','system','','GET_PREFERENCE="zd1200-ping-monitor"');
+ return doc.querySelector('zd1200-ping-monitor');
+}
+function decodeSettings(preference){
+ if(!preference)return null;
+ let values={pingEnabled:preference.getAttribute('ping-enabled')==='1',pingInterval:Number(preference.getAttribute('ping-interval')),snapshotEnabled:preference.getAttribute('snapshot-enabled')==='1',snapshotInterval:Number(preference.getAttribute('snapshot-interval'))};
+ return validInterval(values.pingInterval)&&validInterval(values.snapshotInterval)?values:null;
+}
+function showSettings(values){$('ping-enabled').checked=values.pingEnabled;$('ping-interval').value=values.pingInterval;$('snapshot-enabled').checked=values.snapshotEnabled;$('snapshot-interval').value=values.snapshotInterval}
+function sameSettings(actual,expected){return actual.ping_enabled===expected.pingEnabled&&actual.ping_interval===expected.pingInterval&&actual.snapshot_enabled===expected.snapshotEnabled&&actual.snapshot_interval===expected.snapshotInterval}
+async function waitForAppliedSettings(values,updatedAt){
+ let deadline=Date.now()+40000;
+ while(Date.now()<deadline){
+  try{let response=await fetch(`zd1200-ping-monitor-settings.json?t=${Date.now()}`,{cache:'no-store'});if(response.ok){let applied=await response.json();if(applied.source==='zd-preference'&&applied.preference_updated_at>=updatedAt&&sameSettings(applied,values))return}}catch(e){}
+  await new Promise(resolve=>setTimeout(resolve,1000));
+ }
+ throw new Error('Saved in ZoneDirector, but the monitor did not acknowledge the setting within 40 seconds.');
+}
+async function loadSettings(){
+ let values={pingEnabled:true,pingInterval:60,snapshotEnabled:true,snapshotInterval:300},source='initial defaults';
+ try{let applied=await fetch('zd1200-ping-monitor-settings.json',{cache:'no-store'});if(applied.ok){let value=await applied.json();values={pingEnabled:value.ping_enabled,pingInterval:value.ping_interval,snapshotEnabled:value.snapshot_enabled,snapshotInterval:value.snapshot_interval};source=value.source==='zd-preference'?'ZoneDirector settings':'initial defaults'}}catch(e){}
+ try{let saved=decodeSettings(await settingsPreference());if(saved){values=saved;source='ZoneDirector settings'}}catch(e){settingsMessage(e.message,true);showSettings(values);return}
+ showSettings(values);settingsMessage(`Loaded ${source}.`)
+}
+async function saveSettings(event){
+ event.preventDefault();let values={pingEnabled:$('ping-enabled').checked,pingInterval:Number($('ping-interval').value),snapshotEnabled:$('snapshot-enabled').checked,snapshotInterval:Number($('snapshot-interval').value)};
+ if(!validInterval(values.pingInterval)||!validInterval(values.snapshotInterval)){settingsMessage('Both intervals must be whole seconds from 30 through 3600.',true);return}
+ $('settings-apply').disabled=true;settingsMessage('Applying…');
+ try{
+  let updatedAt=Math.floor(Date.now()/1000),element=`<zd1200-ping-monitor ping-enabled="${values.pingEnabled?1:0}" ping-interval="${values.pingInterval}" snapshot-enabled="${values.snapshotEnabled?1:0}" snapshot-interval="${values.snapshotInterval}" updated-at="${updatedAt}" IS_PARTIAL="true"/>`;
+  await zdRequest('setpref','zd1200-ping-monitor','user-perf-zd1200-ping-monitor',element);
+  let saved=decodeSettings(await settingsPreference());if(!saved||saved.pingEnabled!==values.pingEnabled||saved.pingInterval!==values.pingInterval||saved.snapshotEnabled!==values.snapshotEnabled||saved.snapshotInterval!==values.snapshotInterval)throw new Error('ZoneDirector did not retain the setting.');
+  settingsMessage('Saved in ZoneDirector; waiting for the monitor…');
+  await waitForAppliedSettings(values,updatedAt);
+  settingsMessage('Saved, applied, and verified.');
+ }catch(e){settingsMessage(e.message,true)}finally{$('settings-apply').disabled=false}
+}
+$('settings-form').addEventListener('submit',saveSettings);loadSettings();
 function mark(x,a,b,c,tip){return Math.abs(a-b)<2?`<circle cx="${x}" cy="${a}" r="2.5" fill="${c}"><title>${tip}</title></circle>`:`<line x1="${x}" x2="${x}" y1="${a}" y2="${b}" stroke="${c}" stroke-width="3"><title>${tip}</title></line>`}
 function spark(h,start){let z='';for(let v of[1,10,100,1000]){let y=50-Math.log10(v)/3*46;z+=`<line x1="0" x2="260" y1="${y}" y2="${y}" stroke="#aeb9c2"/><text x="0" y="${y+3}" font-size="8">${v}</text>`}h.forEach((p,n)=>{if(p[2]===null)return;let y=v=>50-Math.log10(Math.max(1,v))/3*46;z+=mark(6+n*10.7,y(p[3]),y(p[2]),p[1]?'#c75c35':'#287bb5',`${S(start+n*3600)}: ${p[0]-p[1]}/${p[0]} responses; p50 ${p[2]} ms, p99 ${p[3]} ms`)});return`<svg class="chart" viewBox="0 0 260 56">${z}</svg>`}
 function target(){return M.targets.find(t=>t.id===id)}function nearestSnapshot(t){return I.snapshots.reduce((best,s)=>!best||Math.abs(s.observed_at-t)<Math.abs(best.observed_at-t)?s:best,null)}function apInfo(t){return C.aps[t.ap_id]||Object.values(C.aps).find(a=>a.ip===t.ip)||{}}

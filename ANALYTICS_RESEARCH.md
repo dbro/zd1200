@@ -86,7 +86,7 @@ could not be collected, the observation is `unknown` and is not counted as an
 ICMP failure. This avoids confusing normal laptop absence or a collector gap
 with a network-quality failure.
 
-Every five minutes a root-owned local collector authenticates only to
+At the configured interval, a root-owned local collector authenticates only to
 `https://127.0.0.1` using the optional dedicated Monitoring Admin account. It
 stores *unparsed* timestamped copies of the three stock read-only XML replies:
 
@@ -103,8 +103,20 @@ records by MAC and compare non-volatile attributes; the preserved XML remains
 the forensic source of truth for later human or LLM investigation.
 
 The static Webs extension cannot safely write the target SQLite database. The
-helper therefore exposes narrow local maintenance commands for the forthcoming
-settings bridge: `add-client MAC IP NAME` and `set-enabled ID 0|1`. They accept
-data values only, never a shell command. A direct Settings UI requires a
-separately validated authenticated write bridge; it is deliberately not faked
-by the static page.
+helper therefore exposes narrow local maintenance commands for client targets:
+`add-client MAC IP NAME` and `set-enabled ID 0|1`. They accept data values only,
+never a shell command.
+
+Ping and snapshot scheduling uses ZD's existing authenticated `setpref` path
+rather than an invented writable web service. The page stores a dedicated
+`zd1200-ping-monitor` preference node through `/admin10/_conf.jsp`, with ZD's
+normal session, CSRF, and administrator privilege checks. ZD persists native
+preferences in its writable repository. The root-owned monitor reads that same
+preference directly through the dedicated Monitoring Admin session, validates
+both enable flags and the 30–3600 second bounds, and retains the last valid
+value in process memory. No second persistent settings copy is used. The same
+Monitoring Admin account collects the stock read-only AP/client/mesh snapshots;
+its identity fields are not repurposed. Live testing proved that the preference
+is visible through a new Monitoring Admin session and remains visible after a
+full container/guest reboot. ZD still correctly rejects `setpref` from that
+read-only role with `AD_PrivilegeLimited`.
