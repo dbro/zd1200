@@ -72,6 +72,18 @@ place. Do not enable the dedicated-adapter watcher for this profile.
    remain available at the manual address. A DHCP reservation is only a
    fallback if a different exact release does not present the factory address.
 
+Before testing the live admin action, the kernel/PID-1 restart path can be
+checked without a configured controller or persistent disk:
+
+```sh
+python3 tests/qemu_restart_smoke.py
+```
+
+Pass criteria: the script observes the stock BusyBox init shutdown sequence,
+the kernel's `Restarting system.` marker, and a second kernel boot from the
+same QEMU process. The live admin-button check is still required because it
+also covers the web handler's delay, repository flush, and warm-restart mark.
+
 Record the controller release, guest MAC, generated-image SHA-256, and the
 state-volume backup location. Do not record passwords, session cookies, or
 private keys in an issue or test log.

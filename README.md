@@ -325,6 +325,17 @@ full validation matrix, known limitations, test evidence, and roadmap are in
 [ROADMAP.md](ROADMAP.md). Run `python3 check_repository_hygiene.py` before
 contributing or publishing changes.
 
+The NAR5520 LED and watchdog probes can call the global kernel halt path while
+probing hardware that QEMU does not provide. The narrowly documented
+`kernel_halt` return keeps those boot-time probes from stopping the VM; it does
+not implement restart. Normal ZD admin restart still runs the stock flush and
+PID-1 shutdown sequence, then the separate `machine_restart_qemu` patch asks
+QEMU's emulated i8042 controller to reset the guest. Exercise both pieces with:
+
+```sh
+python3 tests/qemu_restart_smoke.py
+```
+
 ## Security and licensing
 
 This is not a hardened appliance. Keep the controller, its web UI, SSH, FTP,

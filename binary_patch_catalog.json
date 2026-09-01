@@ -29,7 +29,7 @@
       "patch_offset": 0,
       "expected_hex": "b8",
       "replacement_hex": "c3",
-      "description": "kernel_halt(): ignore the appliance-only LED shutdown path"
+      "description": "kernel_halt(): ignore unsafe halt requests from appliance LED/watchdog probes; reboot uses machine_restart()"
     },
     {
       "artifact_id": "zd1200_kernel_elf",
@@ -65,7 +65,7 @@
       "patch_offset": 0,
       "expected_hex": "?? ec 04 c7 04 24 ??",
       "replacement_hex": "b0 fe e6 64 f4 eb fd",
-      "description": "machine_restart(): request a QEMU i8042 system reset"
+      "description": "machine_restart(): preserve guest reboot by requesting a QEMU i8042 system reset"
     },
     {
       "artifact_id": "zd1200_kernel_elf",

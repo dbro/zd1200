@@ -82,6 +82,15 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(len({rule.name for rule in PATCHES}), len(PATCHES))
         self.assertTrue(all(rule.artifact_id in ARTIFACTS for rule in PATCHES))
 
+    def test_boot_halt_workaround_does_not_disable_guest_restart(self):
+        rules = {item.name: item for item in PATCHES}
+        self.assertEqual(rules["kernel_halt"].replacement_hex, "c3")
+        self.assertEqual(
+            rules["machine_restart_qemu"].replacement_hex,
+            "b0 fe e6 64 f4 eb fd",
+        )
+        self.assertIn("reboot", rules["machine_restart_qemu"].description)
+
 
     def test_catalog_rejects_unknown_artifact_reference(self):
         invalid = {
@@ -415,7 +424,7 @@ class BundleBuilderTests(unittest.TestCase):
                 self.assertNotIn("aidfs", archive.getnames())
 
     def test_kernel_builder_matches_known_patched_fixture(self):
-        source = Path("/home/dan/src/zd1200/image/bzImage")
+        source = Path(__file__).resolve().parents[1] / "image" / "bzImage"
         if not source.is_file():
             self.skipTest("local proprietary kernel fixture is unavailable")
         with tempfile.TemporaryDirectory() as temporary:
@@ -423,7 +432,7 @@ class BundleBuilderTests(unittest.TestCase):
             patch_kernel(source, output)
             self.assertEqual(
                 hashlib.sha256(output.read_bytes()).hexdigest(),
-                "df31fafd6e04a67d86269f81951d4d15898e029673c1e635a137c974d300ec66",
+                "7ef83d2ed7ef2da1f6e480308622b87a8f4392d4361c05d2c8f601a5aae3e357",
             )
 
     def test_r600_bl7_round_trip_preserves_known_ui_image(self):
