@@ -45,6 +45,7 @@ RUN apt-get update \
     && unzip -q /tmp/sqlite-amalgamation.zip -d /src
 
 COPY analytics/zd1200-ping-monitor.c \
+     analytics/zd1200-local-getstat.c \
      /src/
 
 RUN mkdir -p /out \
@@ -53,7 +54,10 @@ RUN mkdir -p /out \
         -I"/src/sqlite-amalgamation-${SQLITE_AMALGAMATION}" \
         /src/zd1200-ping-monitor.c \
         "/src/sqlite-amalgamation-${SQLITE_AMALGAMATION}/sqlite3.c" \
-        -o /out/zd1200-ping-monitor
+        -o /out/zd1200-ping-monitor \
+    && musl-gcc -std=c99 -Os -static -s \
+        /src/zd1200-local-getstat.c \
+        -o /out/zd1200-local-getstat
 
 FROM debian:13-slim
 
@@ -91,6 +95,7 @@ COPY --from=ruckus-squashfs-tools \
      /usr/local/lib/zd1200/ruckus-squashfs/
 COPY --from=ping-monitor-helper \
      /out/zd1200-ping-monitor \
+     /out/zd1200-local-getstat \
      /opt/zd1200/
 
 RUN chmod +x /opt/zd1200/boot-initrd-handoff \

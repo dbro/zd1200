@@ -86,17 +86,19 @@ could not be collected, the observation is `unknown` and is not counted as an
 ICMP failure. This avoids confusing normal laptop absence or a collector gap
 with a network-quality failure.
 
-At the configured interval, a root-owned local collector authenticates only to
-`https://127.0.0.1` using the optional dedicated Monitoring Admin account. It
-stores *unparsed* timestamped copies of the three stock read-only XML replies:
+At the configured interval, a root-owned local collector calls ZD's stock
+`getstatd` service through `/tmp/getstate.socket`. This is the vendor's private
+Unix-domain interface to the same Stamgr adapter used by the web console; it
+requires no web account or password. The helper accepts only three hard-coded
+selector names and stores *unparsed* timestamped copies of their XML replies:
 
 - AP summary;
 - wireless-client summary; and
 - mesh view.
 
-The collector accepts no browser input, cannot send credentials to a routed or
-environment-selected destination, and never creates structured configuration
-history. The Ping Monitor page shows target MAC/IP/name, 24-hour log-scale
+The collector accepts no browser input, has no network destination or
+credential, and never creates structured configuration history. The Ping
+Monitor page shows target MAC/IP/name, 24-hour log-scale
 p50-to-p99 bars, timeout/absence counts, and a browser-side difference between
 any two raw snapshot timestamps. The browser parses only enough XML to match
 records by MAC and compare non-volatile attributes; the preserved XML remains
@@ -110,13 +112,13 @@ never a shell command.
 Ping and snapshot scheduling uses ZD's existing authenticated `setpref` path
 rather than an invented writable web service. The page stores a dedicated
 `zd1200-ping-monitor` preference node through `/admin10/_conf.jsp`, with ZD's
-normal session, CSRF, and administrator privilege checks. ZD persists native
-preferences in its writable repository. The root-owned monitor reads that same
-preference directly through the dedicated Monitoring Admin session, validates
-both enable flags and the 30–3600 second bounds, and retains the last valid
-value in process memory. No second persistent settings copy is used. The same
-Monitoring Admin account collects the stock read-only AP/client/mesh snapshots;
-its identity fields are not repurposed. Live testing proved that the preference
-is visible through a new Monitoring Admin session and remains visible after a
-full container/guest reboot. ZD still correctly rejects `setpref` from that
-read-only role with `AD_PrivilegeLimited`.
+normal session, CSRF, and administrator privilege checks. ZD records the
+committed request in its persistent `ajax_config.log`. The root-owned monitor
+accepts only the five attributes of the exact `zd1200-ping-monitor` setpref
+record, validates both enable flags and the 30–3600 second bounds, and mirrors
+the last valid values to a mode-0600 settings cache. This closes the small
+window between the web commit and the monitor's next 30-second pass while
+remaining independent of journal rotation. No dedicated role or user is
+required. Live testing proved that the preference survives a full
+container/guest reboot and that `getstatd` returns the same AP/client/mesh
+payloads wrapped by the authenticated HTTPS API.

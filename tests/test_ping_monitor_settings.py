@@ -62,15 +62,26 @@ class PingMonitorSettingsTests(unittest.TestCase):
         self.assertIn('"$configured_ping" -ge 30', handoff)
         self.assertIn('"$configured_ping" -le 3600', handoff)
 
-    def test_sync_reads_native_preference_through_monitoring_session(self):
+    def test_sync_bridges_native_preference_journal_to_root_cache(self):
         sync = (ROOT / "analytics/ping-monitor-settings-sync.sh").read_text()
-        self.assertIn("credentials.env", sync)
-        self.assertIn("/admin10/_conf.jsp", sync)
-        self.assertIn('GET_PREFERENCE="zd1200-ping-monitor"', sync)
-        self.assertIn("/tmp/zd1200-ping-settings-cookie", sync)
+        self.assertIn("/writable/etc/airespider/ajax_config.log", sync)
+        self.assertIn("<zd1200-ping-monitor ", sync)
+        self.assertIn("settings-cache.conf", sync)
+        self.assertNotIn("credentials.env", sync)
+        self.assertNotIn("/admin10/_conf.jsp", sync)
+        self.assertNotIn("curl", sync)
         self.assertNotIn("native-settings.conf", sync)
-        self.assertNotIn("/etc/airespider", sync)
         self.assertNotIn("full-name", sync)
+
+    def test_snapshot_collector_uses_only_vendor_local_socket_helper(self):
+        collector = (ROOT / "analytics/network-snapshot-collect.sh").read_text()
+        helper = (ROOT / "analytics/zd1200-local-getstat.c").read_text()
+        self.assertIn("zd1200-local-getstat", collector)
+        self.assertNotIn("curl", collector)
+        self.assertNotIn("credentials", collector)
+        self.assertIn('"/tmp/getstate.socket"', helper)
+        self.assertIn('"/tmp/getstat_response"', helper)
+        self.assertIn("ap|client|mesh", helper)
 
 
 if __name__ == "__main__":

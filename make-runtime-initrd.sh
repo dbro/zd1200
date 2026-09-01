@@ -12,9 +12,6 @@ enable_root_cli="${ZD_ENABLE_ROOT_CLI:-0}"
 support_entitlement_end="${ZD_SUPPORT_ENTITLEMENT_END:-}"
 root_ssh_public_key="${ZD_ROOT_SSH_PUBLIC_KEY:-}"
 root_ssh_public_key_sha256=""
-snapshot_username="${ZD_SNAPSHOT_USERNAME:-}"
-snapshot_password="${ZD_SNAPSHOT_PASSWORD:-}"
-snapshot_credentials_sha256=""
 ping_client_targets="${ZD_PING_CLIENT_TARGETS:-}"
 ping_interval_seconds="${ZD_PING_INTERVAL_SECONDS:-60}"
 snapshot_interval_seconds="${ZD_SNAPSHOT_INTERVAL_SECONDS:-300}"
@@ -56,14 +53,6 @@ if [ -n "$root_ssh_public_key" ]; then
     root_ssh_public_key_sha256="$(printf '%s' "$root_ssh_public_key" | sha256sum | awk '{print $1}')"
 fi
 
-if [ -n "$snapshot_username" ] || [ -n "$snapshot_password" ]; then
-    if [ -z "$snapshot_username" ] || [ -z "$snapshot_password" ]; then
-        echo "Set both ZD_SNAPSHOT_USERNAME and ZD_SNAPSHOT_PASSWORD, or neither" >&2
-        exit 2
-    fi
-    snapshot_credentials_sha256="$(printf '%s\0%s' "$snapshot_username" "$snapshot_password" | sha256sum | awk '{print $1}')"
-fi
-
 for interval_spec in "ping:$ping_interval_seconds" "snapshot:$snapshot_interval_seconds"; do
     interval_name=${interval_spec%%:*}
     interval_value=${interval_spec#*:}
@@ -95,6 +84,7 @@ sources=(
     "$work_dir/analytics/network-snapshot-collect.sh"
     "$work_dir/analytics/ping-monitor-settings-sync.sh"
     "$work_dir/zd1200-ping-monitor"
+    "$work_dir/zd1200-local-getstat"
 )
 if [ -f "$payload" ]; then
     sources+=("$payload")
@@ -106,7 +96,6 @@ signature="$({
     printf 'ZD_ENABLE_ROOT_CLI=%s\n' "$enable_root_cli"
     printf 'ZD_SUPPORT_ENTITLEMENT_END=%s\n' "$support_entitlement_end"
     printf 'ZD_ROOT_SSH_PUBLIC_KEY_SHA256=%s\n' "$root_ssh_public_key_sha256"
-    printf 'ZD_SNAPSHOT_CREDENTIALS_SHA256=%s\n' "$snapshot_credentials_sha256"
     printf 'ZD_PING_CLIENT_TARGETS=%s\n' "$ping_client_targets"
     printf 'ZD_PING_INTERVAL_SECONDS=%s\n' "$ping_interval_seconds"
     printf 'ZD_SNAPSHOT_INTERVAL_SECONDS=%s\n' "$snapshot_interval_seconds"
@@ -135,6 +124,7 @@ cp "$work_dir/analytics/ping-monitor.html" "$staging/zd-analytics/ping-monitor.h
 cp "$work_dir/analytics/network-snapshot-collect.sh" "$staging/zd-analytics/network-snapshot-collect.sh"
 cp "$work_dir/analytics/ping-monitor-settings-sync.sh" "$staging/zd-analytics/ping-monitor-settings-sync.sh"
 cp "$work_dir/zd1200-ping-monitor" "$staging/zd-analytics/ping-monitor"
+cp "$work_dir/zd1200-local-getstat" "$staging/zd-analytics/zd1200-local-getstat"
 if [ -f "$payload" ]; then
     mkdir -p "$staging/zd-payload"
     # The container deliberately drops CAP_CHOWN. GNU tar otherwise notices
@@ -145,13 +135,6 @@ fi
 if [ -n "$root_ssh_public_key" ]; then
     printf '%s\n' "$root_ssh_public_key" > "$staging/zd-root-authorized_keys"
     chmod 600 "$staging/zd-root-authorized_keys"
-fi
-if [ -n "$snapshot_credentials_sha256" ]; then
-    {
-        printf 'ZD_SNAPSHOT_USERNAME=%s\n' "$snapshot_username"
-        printf 'ZD_SNAPSHOT_PASSWORD=%s\n' "$snapshot_password"
-    } > "$staging/zd-snapshot-credentials"
-    chmod 600 "$staging/zd-snapshot-credentials"
 fi
 if [ -n "$ping_client_targets" ]; then
     printf '%s\n' "$ping_client_targets" > "$staging/zd-ping-client-targets"
@@ -167,6 +150,7 @@ fi
 } > "$staging/zd-runtime-options"
 
 chmod 755 "$staging/bin/boot-handoff" "$staging/zd-analytics/ping-monitor" \
+    "$staging/zd-analytics/zd1200-local-getstat" \
     "$staging/zd-analytics/network-snapshot-collect.sh" \
     "$staging/zd-analytics/ping-monitor-settings-sync.sh"
 chmod 755 "$staging/zd-controller-wrapper.sh" "$staging/zd-memory-snapshot.sh"

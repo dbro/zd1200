@@ -247,18 +247,8 @@ ZD_ROOT_CLI
     else
         /bin/busybox rm -f "$root_ssh_store"
     fi
-    # Ping Monitor credentials are supplied only when explicitly configured
-    # through Compose. Keep the recovery copy on the writable partition, mode
-    # 0600, and remove only the file owned by this project when unset.
-    ping_credentials=/data/zd1200-ping-monitor/credentials.env
     /bin/busybox mkdir -p /data/zd1200-ping-monitor
-    if [ -r /zd-snapshot-credentials ]; then
-        /bin/busybox cp -f /zd-snapshot-credentials "$ping_credentials"
-        /bin/busybox chmod 600 "$ping_credentials"
-        echo "BOOT-HANDOFF: provisioned Ping Monitor local credentials" >/dev/console
-    else
-        /bin/busybox rm -f "$ping_credentials"
-    fi
+    /bin/busybox rm -f /data/zd1200-ping-monitor/credentials.env
     ping_targets=/data/zd1200-ping-monitor/client-targets.conf
     if [ -r /zd-ping-client-targets ]; then
         /bin/busybox cp -f /zd-ping-client-targets "$ping_targets"
@@ -328,6 +318,7 @@ if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
     # preference endpoint; no custom CGI or EJS extension is required.
     if [ -r /zd-analytics/ping-monitor.html ] \
         && [ -x /zd-analytics/ping-monitor ] \
+        && [ -x /zd-analytics/zd1200-local-getstat ] \
         && [ -x /zd-analytics/network-snapshot-collect.sh ] \
         && [ -x /zd-analytics/ping-monitor-settings-sync.sh ]; then
         /bin/busybox mkdir -p /newroot/usr/local/sbin
@@ -340,6 +331,8 @@ if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
         /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-ping-monitor
         /bin/busybox cp -f /zd-analytics/network-snapshot-collect.sh /newroot/usr/local/sbin/zd1200-network-snapshot-collect
         /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-network-snapshot-collect
+        /bin/busybox cp -f /zd-analytics/zd1200-local-getstat /newroot/usr/local/sbin/zd1200-local-getstat
+        /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-local-getstat
         /bin/busybox cp -f /zd-analytics/ping-monitor-settings-sync.sh /newroot/usr/local/sbin/zd1200-ping-monitor-settings-sync
         /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-ping-monitor-settings-sync
         /bin/busybox cp -f /zd-analytics/ping-monitor.html /newroot/web/admin10/zd1200-ping-monitor.html
@@ -890,6 +883,7 @@ ZD_PING_MENU_PATCH_V4
     rm -f /writable/zd1200-ping-monitor/native-settings.conf \
         /writable/zd1200-ping-monitor/.settings-session.cookie \
         /writable/zd1200-ping-monitor/.settings-csrf
+    rm -rf /writable/zd1200-ping-monitor/getstat-probe
     if [ -r "$intervals" ]; then
         configured_ping=$(sed -n 's/^PING_INTERVAL_SECONDS=//p' "$intervals" | head -n 1)
         configured_snapshot=$(sed -n 's/^SNAPSHOT_INTERVAL_SECONDS=//p' "$intervals" | head -n 1)
@@ -956,9 +950,9 @@ ZD_PING_MENU_PATCH_V4
     apply_native_settings "$native_values"
     publish_settings
     while :; do
-        # Read and validate the persistent ZD preference directly through the
-        # Monitoring Admin session. Keep the last valid value in process memory
-        # if ZD is temporarily unavailable; there is no settings transfer file.
+        # Read and validate the persistent native ZD preference directly from
+        # its root-only configuration. Keep the last valid value in process
+        # memory if ZD is temporarily unavailable.
         native_values=$(/usr/local/sbin/zd1200-ping-monitor-settings-sync 2>/dev/null || true)
         apply_native_settings "$native_values"
         publish_settings
