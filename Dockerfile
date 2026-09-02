@@ -22,7 +22,7 @@ RUN apt-get update \
     && git -C /src checkout --detach FETCH_HEAD \
     && make -C /src/src/squashfs4.0-ruckus-lzma -j"$(nproc)"
 
-FROM --platform=$ANALYTICS_HELPER_PLATFORM debian:13-slim AS ping-monitor-helper
+FROM debian:13-slim AS ping-monitor-sources
 
 ARG DEBIAN_FRONTEND=noninteractive
 # Use a SQLite release contemporary with the ZD1200's Linux 2.6.32 guest.
@@ -32,17 +32,34 @@ ARG SQLITE_AMALGAMATION=3071700
 ARG SQLITE_AMALGAMATION_SHA256=022ef41bd83a1333faf40dc8f1f8469205f4a18c30dc5e137889ba7ea924ef30
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        ca-certificates \
-        curl \
-        build-essential \
-        musl-tools \
-        unzip \
+    && apt-get install -y --no-install-recommends ca-certificates curl unzip \
     && rm -rf /var/lib/apt/lists/* \
     && curl -fsSL "https://www.sqlite.org/${SQLITE_YEAR}/sqlite-amalgamation-${SQLITE_AMALGAMATION}.zip" \
         -o /tmp/sqlite-amalgamation.zip \
     && echo "${SQLITE_AMALGAMATION_SHA256}  /tmp/sqlite-amalgamation.zip" | sha256sum -c - \
     && unzip -q /tmp/sqlite-amalgamation.zip -d /src
+
+# Download the i386 toolchain in an ordinary native stage.  BuildKit's
+# emulated 32-bit network sandbox cannot resolve DNS on some Docker hosts.
+RUN dpkg --add-architecture i386 \
+    && apt-get update \
+    && apt-get -y --download-only --no-install-recommends \
+        install gcc:i386 make:i386 musl-tools:i386 \
+    && mkdir -p /packages \
+    && cp /var/cache/apt/archives/*.deb /packages/
+
+FROM --platform=$ANALYTICS_HELPER_PLATFORM debian:13-slim AS ping-monitor-helper
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG SQLITE_AMALGAMATION=3071700
+
+COPY --from=ping-monitor-sources /src/sqlite-amalgamation-${SQLITE_AMALGAMATION} \
+     /src/sqlite-amalgamation-${SQLITE_AMALGAMATION}
+COPY --from=ping-monitor-sources /packages /packages
+
+RUN dpkg --force-confold --force-architecture -i /packages/*.deb || true \
+    && apt-get -f install --no-download -y \
+    && rm -rf /packages
 
 COPY analytics/zd1200-ping-monitor.c \
      analytics/zd1200-local-getstat.c \
