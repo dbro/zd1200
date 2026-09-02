@@ -25,8 +25,13 @@ if [ -n "$override" ]; then
     exit 0
 fi
 
-[ -r "$git_dir/HEAD" ] \
-    || fail "cannot resolve the source revision; use a Git checkout or set ZD_VIRTUAL_BUILD_ID"
+if [ ! -r "$git_dir/HEAD" ]; then
+    # Portainer's checkout is not necessarily visible to the Docker daemon.
+    # Keep deployment working; callers can provide ZD_VIRTUAL_BUILD_ID when
+    # they need an identifying revision in the admin UI.
+    printf '0000000\n'
+    exit 0
+fi
 head_value="$(tr -d '\r\n' < "$git_dir/HEAD")"
 case "$head_value" in
     'ref: refs/'*)

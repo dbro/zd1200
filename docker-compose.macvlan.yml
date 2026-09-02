@@ -25,7 +25,7 @@ services:
         target: /source-git
         read_only: true
         bind:
-          create_host_path: false
+          create_host_path: true
       - zd1200-runtime:/runtime
     entrypoint: ["/opt/zd1200/prepare-compose-runtime.sh"]
     command: []
