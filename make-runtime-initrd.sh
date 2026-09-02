@@ -15,6 +15,27 @@ root_ssh_public_key_sha256=""
 ping_client_targets="${ZD_PING_CLIENT_TARGETS:-}"
 ping_interval_seconds="${ZD_PING_INTERVAL_SECONDS:-60}"
 snapshot_interval_seconds="${ZD_SNAPSHOT_INTERVAL_SECONDS:-300}"
+virtual_build_id_file="$work_dir/image/virtual-build-id"
+virtual_build_id=""
+
+if [ -r "$virtual_build_id_file" ]; then
+    virtual_build_id="$(tr -d '\r\n' < "$virtual_build_id_file")"
+elif [ -r "$work_dir/resolve-source-revision.sh" ]; then
+    virtual_build_id="$(bash "$work_dir/resolve-source-revision.sh" "$work_dir/.git")"
+fi
+case "$virtual_build_id" in
+    ???????) ;;
+    *)
+        echo "Missing or invalid seven-character virtual build revision: $virtual_build_id_file" >&2
+        exit 2
+        ;;
+esac
+case "$virtual_build_id" in
+    *[!0-9a-f]*)
+        echo "Virtual build revision must contain only lowercase hexadecimal characters" >&2
+        exit 2
+        ;;
+esac
 
 case "$enable_ecdsa_ssh" in
     0|1) ;;
@@ -76,6 +97,7 @@ fi
 sources=(
     "$base_initrd"
     "$work_dir/make-runtime-initrd.sh"
+    "$work_dir/resolve-source-revision.sh"
     "$work_dir/boot-initrd-handoff"
     "$work_dir/zd-controller-wrapper.sh"
     "$work_dir/zd-memory-snapshot.sh"
@@ -99,7 +121,8 @@ signature="$({
     printf 'ZD_PING_CLIENT_TARGETS=%s\n' "$ping_client_targets"
     printf 'ZD_PING_INTERVAL_SECONDS=%s\n' "$ping_interval_seconds"
     printf 'ZD_SNAPSHOT_INTERVAL_SECONDS=%s\n' "$snapshot_interval_seconds"
-    printf 'ZD_RUNTIME_OPTIONS_FORMAT=1\n'
+    printf 'ZD_VIRTUAL_BUILD_ID=%s\n' "$virtual_build_id"
+    printf 'ZD_RUNTIME_OPTIONS_FORMAT=2\n'
 } | sha256sum | awk '{print $1}')"
 if [ -s "$output" ] && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$signature" ]; then
     exit 0
@@ -147,6 +170,7 @@ fi
     printf 'SUPPORT_ENTITLEMENT_END_EPOCH=%s\n' "$support_entitlement_end_epoch"
     printf 'PING_INTERVAL_SECONDS=%s\n' "$ping_interval_seconds"
     printf 'SNAPSHOT_INTERVAL_SECONDS=%s\n' "$snapshot_interval_seconds"
+    printf 'VIRTUAL_BUILD_ID=%s\n' "$virtual_build_id"
 } > "$staging/zd-runtime-options"
 
 chmod 755 "$staging/bin/boot-handoff" "$staging/zd-analytics/ping-monitor" \

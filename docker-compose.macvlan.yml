@@ -17,8 +17,15 @@ services:
     network_mode: none
     environment:
       ZD_VENDOR_ARCHIVE: ${ZD_VENDOR_ARCHIVE:?Set ZD_VENDOR_ARCHIVE to the basename of the downloaded ZD archive in ./vendor}
+      ZD_VIRTUAL_BUILD_ID: ${ZD_VIRTUAL_BUILD_ID:-}
     volumes:
       - ${ZD_VENDOR_DIR:-./vendor}:/vendor:ro
+      - type: bind
+        source: ${ZD_GIT_DIR:-./.git}
+        target: /source-git
+        read_only: true
+        bind:
+          create_host_path: false
       - zd1200-runtime:/runtime
     entrypoint: ["/opt/zd1200/prepare-compose-runtime.sh"]
     command: []

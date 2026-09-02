@@ -15,6 +15,7 @@ enable_ecdsa_ssh=0
 enable_root_cli=0
 support_entitlement_end_epoch=0
 payload_root_ssh=not_supported
+virtual_build_id=
 if [ -r /zd-runtime-options ]; then
     option_value=$(/bin/busybox sed -n 's/^ENABLE_ECDSA_SSH=//p' /zd-runtime-options | /bin/busybox head -n 1)
     case "$option_value" in
@@ -31,6 +32,16 @@ if [ -r /zd-runtime-options ]; then
         '') ;;
         *[!0-9]*) echo "BOOT-HANDOFF: invalid support entitlement date; leaving unchanged" >/dev/console ;;
         *) support_entitlement_end_epoch=$option_value ;;
+    esac
+    option_value=$(/bin/busybox sed -n 's/^VIRTUAL_BUILD_ID=//p' /zd-runtime-options | /bin/busybox head -n 1)
+    case "$option_value" in
+        ???????)
+            case "$option_value" in
+                *[!0-9a-f]*) echo "BOOT-HANDOFF: invalid virtual build revision; omitting it" >/dev/console ;;
+                *) virtual_build_id=$option_value ;;
+            esac
+            ;;
+        *) echo "BOOT-HANDOFF: invalid virtual build revision; omitting it" >/dev/console ;;
     esac
 fi
 echo "BOOT-HANDOFF: runtime root_cli=$enable_root_cli support_end=$support_entitlement_end_epoch" >/dev/console
@@ -292,6 +303,12 @@ echo D > /dev/watchdog 2>/dev/null || true
 # quoting here caused the old S98/S99 hook to be rejected by BusyBox.
 if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
     /bin/busybox mkdir -p /newroot/etc/init.d
+    if [ -n "$virtual_build_id" ]; then
+        /bin/busybox sh -c "printf '%s\\n' '$virtual_build_id' > /newroot/etc/zd1200-virtual-build-id"
+        /bin/busybox chmod 444 /newroot/etc/zd1200-virtual-build-id
+    else
+        /bin/busybox rm -f /newroot/etc/zd1200-virtual-build-id
+    fi
     # /bin/MODEL normally points at /proc/v54bsp/model.  The synthetic
     # boarddata is sufficient for the kernel driver to start, but leaves that
     # proc entry empty.  libemf's OEM-string loader assumes the first line is
@@ -769,6 +786,31 @@ for bundle_name in app ruckus; do
     bundle=$root/web/build/$bundle_name.js
     compressed=$bundle.gz
     [ -r "$bundle" ] || continue
+
+    # The stock formatter supplies both the visible version and its tooltip.
+    # Restore any prior virtual suffix before applying this boot's revision so
+    # an upgraded checkout never continues to advertise an older commit.
+    if [ "$bundle_name" = app ] && [ -r "$root/etc/zd1200-virtual-build-id" ]; then
+        virtual_build_id=$("$bb" cat "$root/etc/zd1200-virtual-build-id")
+        case "$virtual_build_id" in
+            ???????)
+                case "$virtual_build_id" in
+                    *[!0-9a-f]*) virtual_build_id= ;;
+                esac
+                ;;
+            *) virtual_build_id= ;;
+        esac
+        if [ -n "$virtual_build_id" ]; then
+            "$bb" sed -i \
+                -e 's@sysVersion:function(e){var t=Msg.SysVersion;return(""==t?e:t)+" virtual [0-9a-f][0-9a-f]*"}@sysVersion:function(e){var t=Msg.SysVersion;return""==t?e:t}@g' \
+                -e "s@sysVersion:function(e){var t=Msg.SysVersion;return\"\"==t?e:t}@sysVersion:function(e){var t=Msg.SysVersion;return(\"\"==t?e:t)+\" virtual $virtual_build_id\"}@g" \
+                "$bundle"
+            if ! "$bb" grep -q "virtual $virtual_build_id" "$bundle"; then
+                echo "ZD virtual build: app.js version signature not found" >/dev/console
+                exit 1
+            fi
+        fi
+    fi
 
     # All menu variants now use a real URL. This makes transitions from SPA
     # and JSP pages identical and gives browser history ordinary semantics.

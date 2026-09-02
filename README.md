@@ -248,6 +248,14 @@ docker compose up -d --build
 | `ZD_ROOT_SSH_PUBLIC_KEY` | Enables public-key-only root SSH on TCP 2222 for 10.5.1.0.282. RSA and ECDSA keys are accepted; Ed25519 is not. |
 | `ZD_SUPPORT_ENTITLEMENT_END` | Creates a finite support-entitlement record ending on the supplied `YYYY-MM-DD` date. |
 | `ZD_PING_INTERVAL_SECONDS` and `ZD_SNAPSHOT_INTERVAL_SECONDS` | Set the initial 30–3600 second intervals. Both collectors remain disabled until enabled from the Ping Monitor page. |
+| `ZD_VIRTUAL_BUILD_ID` | Overrides the seven-character revision shown after the ZoneDirector version. Normal Git checkouts detect this automatically; use the override only for an exported source tree without `.git`. |
+
+The regular admin console appends `virtual <revision>` to the stock
+ZoneDirector version. The revision is resolved from the checked-out Git commit
+when the Compose runtime is prepared, so it identifies the source used to
+build that running virtual controller. If the project was copied without its
+`.git` metadata, set `ZD_VIRTUAL_BUILD_ID` to the source commit and
+`ZD_GIT_DIR=/dev/null` before running Compose.
 
 ### Ping Monitor
 

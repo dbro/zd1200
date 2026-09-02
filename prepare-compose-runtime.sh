@@ -25,11 +25,17 @@ archive="$vendor_dir/$archive_name"
 [ -f "$archive" ] || fail "vendor archive is not readable: $archive"
 
 mkdir -p "$runtime_dir"
+virtual_build_id="$(bash "$work_dir/resolve-source-revision.sh")"
+write_virtual_build_id() {
+    printf '%s\n' "$virtual_build_id" > "$runtime_dir/virtual-build-id.tmp"
+    mv -f "$runtime_dir/virtual-build-id.tmp" "$runtime_dir/virtual-build-id"
+}
 input_fingerprint="$(sha256sum "$archive")"
 if [ -f "$runtime_dir/preparation-input.sha256" ] \
     && [ -f "$runtime_dir/bzImage" ] \
     && [ -f "$runtime_dir/bootinitramfs.gz" ]; then
     if [ "$(cat "$runtime_dir/preparation-input.sha256")" = "$input_fingerprint" ]; then
+        write_virtual_build_id
         echo "Prepared runtime already matches this vendor input."
         exit 0
     fi
@@ -60,4 +66,5 @@ cp "$temporary/build-report.json" "$runtime_dir/build-report.json"
 sha256sum "$archive" > "$runtime_dir/source-archive.sha256"
 printf '%s\n' "$archive_name" > "$runtime_dir/source-archive.name"
 printf '%s\n' "$input_fingerprint" > "$runtime_dir/preparation-input.sha256"
+write_virtual_build_id
 echo "Prepared runtime is ready for the ZoneDirector service."
