@@ -66,6 +66,7 @@ class VirtualBuildVersionTests(unittest.TestCase):
         self.assertIn("$bundle_name.js version signature not found", handoff)
         self.assertIn("sysVersion:function(e){var t=Msg.SysVersion", handoff)
         self.assertIn("sysVersion:function(t){var e=Msg.SysVersion", handoff)
+        self.assertIn("Menu patch failures must not prevent", handoff)
 
 
 if __name__ == "__main__":
