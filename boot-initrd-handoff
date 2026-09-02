@@ -304,12 +304,14 @@ echo D > /dev/watchdog 2>/dev/null || true
 if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
     /bin/busybox mkdir -p /newroot/etc/init.d
     if [ -r /zd-stock-web/app.js ] && [ -r /zd-stock-web/ruckus.js ] \
+        && [ -r /zd-stock-web/scripts.min.js ] \
         && [ -r /zd-stock-web/utilOld.js ]; then
         /bin/busybox cp -f /zd-stock-web/app.js /newroot/web/build/app.js
         /bin/busybox cp -f /zd-stock-web/ruckus.js /newroot/web/build/ruckus.js
+        /bin/busybox cp -f /zd-stock-web/scripts.min.js /newroot/web/build/scripts.min.js
         /bin/busybox cp -f /zd-stock-web/utilOld.js /newroot/web/scripts/utilOld.js
         /bin/busybox chmod 644 /newroot/web/build/app.js /newroot/web/build/ruckus.js \
-            /newroot/web/scripts/utilOld.js
+            /newroot/web/build/scripts.min.js /newroot/web/scripts/utilOld.js
         echo "BOOT-HANDOFF: restored pristine vendor admin scripts" >/dev/console
     else
         echo "BOOT-HANDOFF: pristine vendor admin scripts are unavailable" >/dev/console
@@ -836,9 +838,31 @@ for bundle_name in app ruckus; do
     fi
 done
 
-# mon_system.jsp predates both webpack bundles. It formats the same backend
-# version through Render.sysVersion in utilOld.js, so label that presentation
-# path as well without changing the system or AP firmware version data.
+# mon_system.jsp predates the webpack UI and loads scripts.min.js. Patch its
+# global Render.sysVersion formatter without changing system or AP firmware
+# version data. utilOld.js carries the same formatter for still-older pages.
+legacy_bundle=$root/web/build/scripts.min.js
+legacy_bundle_compressed=$legacy_bundle.gz
+if [ -r "$legacy_bundle" ] && [ -n "$virtual_build_id" ]; then
+    "$bb" sed -i \
+        -e 's@Render.sysVersion=function(version){var v=Msg.SysVersion;return(""==v?version:v)+" virtual [0-9a-f][0-9a-f]*"}@Render.sysVersion=function(version){var v=Msg.SysVersion;return""==v?version:v}@g' \
+        -e "s@Render.sysVersion=function(version){var v=Msg.SysVersion;return\"\"==v?version:v}@Render.sysVersion=function(version){var v=Msg.SysVersion;return(\"\"==v?version:v)+\" virtual $virtual_build_id\"}@g" \
+        "$legacy_bundle"
+    if "$bb" grep -q "virtual $virtual_build_id" "$legacy_bundle"; then
+        if [ -e "$legacy_bundle_compressed" ]; then
+            legacy_bundle_gzip_tmp=$legacy_bundle_compressed.tmp.$$
+            if "$bb" gzip -c "$legacy_bundle" > "$legacy_bundle_gzip_tmp"; then
+                "$bb" chmod 644 "$legacy_bundle_gzip_tmp"
+                "$bb" mv -f "$legacy_bundle_gzip_tmp" "$legacy_bundle_compressed"
+            else
+                "$bb" rm -f "$legacy_bundle_gzip_tmp"
+            fi
+        fi
+    else
+        echo "ZD virtual build: scripts.min.js version signature not found" >/dev/console
+    fi
+fi
+
 legacy_util=$root/web/scripts/utilOld.js
 legacy_compressed=$legacy_util.gz
 if [ -r "$legacy_util" ] && [ -n "$virtual_build_id" ] \

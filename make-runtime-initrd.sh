@@ -177,6 +177,13 @@ if [ ! -s "$stock_legacy_util" ]; then
     echo "Unable to extract stock web/scripts/utilOld.js from $rootfs_archive" >&2
     exit 1
 fi
+stock_legacy_bundle="$staging/zd-stock-web/scripts.min.js"
+debugfs -R "dump -p /web/build/scripts.min.js $stock_legacy_bundle" \
+    "$rootfs_image" >/dev/null 2>&1 || true
+if [ ! -s "$stock_legacy_bundle" ]; then
+    echo "Unable to extract stock web/build/scripts.min.js from $rootfs_archive" >&2
+    exit 1
+fi
 if [ -f "$payload" ]; then
     mkdir -p "$staging/zd-payload"
     # The container deliberately drops CAP_CHOWN. GNU tar otherwise notices
