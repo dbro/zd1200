@@ -1,8 +1,9 @@
 # The guest is an i386 Linux 2.6.32 system. Keep its helper i386 even when
 # Docker builds the surrounding image on an ARM or x86-64 host.
 ARG ANALYTICS_HELPER_PLATFORM=linux/386
+ARG DEBIAN_IMAGE=debian:13-slim@sha256:d7e12182ce18b85b93007c1dedf31f2d29e01ccf3182cc4017c709b6259bc132
 
-FROM debian:13-slim AS ruckus-squashfs-tools
+FROM --platform=$BUILDPLATFORM $DEBIAN_IMAGE AS ruckus-squashfs-tools
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG RUCKUS_AP_TOOLS_REV=3d9e4add414228eac4091f301e813d14130c3d61
@@ -22,7 +23,7 @@ RUN apt-get update \
     && git -C /src checkout --detach FETCH_HEAD \
     && make -C /src/src/squashfs4.0-ruckus-lzma -j"$(nproc)"
 
-FROM debian:13-slim AS ping-monitor-sources
+FROM --platform=$BUILDPLATFORM $DEBIAN_IMAGE AS ping-monitor-sources
 
 ARG DEBIAN_FRONTEND=noninteractive
 # Use a SQLite release contemporary with the ZD1200's Linux 2.6.32 guest.
@@ -48,7 +49,7 @@ RUN dpkg --add-architecture i386 \
     && mkdir -p /packages \
     && cp /var/cache/apt/archives/*.deb /packages/
 
-FROM --platform=$ANALYTICS_HELPER_PLATFORM debian:13-slim AS ping-monitor-helper
+FROM --platform=$ANALYTICS_HELPER_PLATFORM $DEBIAN_IMAGE AS ping-monitor-helper
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG SQLITE_AMALGAMATION=3071700
@@ -75,7 +76,7 @@ RUN mkdir -p /out \
         /src/zd1200-local-getstat.c \
         -o /out/zd1200-local-getstat
 
-FROM debian:13-slim
+FROM --platform=$BUILDPLATFORM $DEBIAN_IMAGE
 
 ARG DEBIAN_FRONTEND=noninteractive
 

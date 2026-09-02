@@ -1166,6 +1166,15 @@ ZD_CONTAINER_CONTROL
     /bin/busybox chmod 644 /newroot/etc/shells
     # Remove any old diagnostic listener before considering an opt-in payload.
     /bin/busybox rm -f /newroot/etc/init.d/S99zd_dropbear2222
+    # Keep a private alias to the vendor Dropbear multicall binary. The normal
+    # key-generator paths remain inert during factory initialization, while
+    # the late configured-system recovery hook can still generate host keys
+    # after the guest root has been remounted read-only.
+    /bin/busybox mkdir -p /newroot/usr/local/libexec/zd1200
+    /bin/busybox rm -f /newroot/usr/local/libexec/zd1200/dropbearkey
+    # Dropbear selects its multicall applet from argv[0], so the private link's
+    # basename must remain exactly "dropbearkey".
+    /bin/busybox ln -s /usr/sbin/dropbear /newroot/usr/local/libexec/zd1200/dropbearkey
     # Optional root SSH uses the vendor Dropbear binary, not an unprovenanced
     # bundled daemon. It is a separate port with password auth disabled, so
     # the ordinary administrative SSH service and its login wrapper remain
@@ -1238,6 +1247,67 @@ ZD_ECDSA_INIT
             /bin/busybox chmod 755 /newroot/etc/init.d/S59zd_ecdsa_hostkey
         fi
     fi
+    # system.xml may not exist yet when the initramfs examines a newly
+    # configured data partition.  In that case the early entropy workaround
+    # above leaves the key generators inert and S60dropbear has no RSA key, so
+    # the otherwise configured controller refuses TCP/22 forever.  Recover
+    # after vendor startup has materialized its configured system.xml.
+    /bin/busybox cat > /newroot/etc/init.d/S99zd_dropbear_recovery <<'ZD_DROPBEAR_RECOVERY'
+#!/bin/sh
+(
+    attempts=0
+    log=/writable/zd1200-ssh-recovery.log
+    echo "recovery hook started" >> "$log"
+    while [ "$attempts" -lt 120 ]; do
+        system=/writable/etc/airespider/system.xml
+        configured=0
+        if [ -f "$system" ]; then
+            grep -q 'is-factory="false"' "$system" && configured=1
+            grep -q 'is-factory="0"' "$system" && configured=1
+            grep -q 'factory-mode="false"' "$system" && configured=1
+            grep -q 'factory-mode="0"' "$system" && configured=1
+        fi
+        if [ "$configured" = 1 ]; then
+            echo "configured state observed" >> "$log"
+            keydir=/writable/etc/airespider/dropbear
+            rsa_key=$keydir/dropbear_host_rsa_key
+            ecdsa_key=$keydir/dropbear_host_ecdsa_key
+            mkdir -p "$keydir"
+            if [ ! -s "$rsa_key" ]; then
+                /usr/local/libexec/zd1200/dropbearkey -t rsa -f "$rsa_key" >/dev/console 2>&1 || {
+                    echo "RSA host-key generation failed; retrying" >> "$log"
+                    attempts=$((attempts + 1))
+                    sleep 5
+                    continue
+                }
+                chmod 600 "$rsa_key" 2>/dev/null || true
+            fi
+            if grep -q -- "$ecdsa_key" /etc/init.d/dropbear \
+                && [ ! -s "$ecdsa_key" ]; then
+                /usr/local/libexec/zd1200/dropbearkey -t ecdsa -f "$ecdsa_key" >/dev/console 2>&1 || true
+                chmod 600 "$ecdsa_key" 2>/dev/null || true
+            fi
+            if [ -s /var/run/dropbear.pid ] \
+                && kill -0 "$(cat /var/run/dropbear.pid)" 2>/dev/null; then
+                exit 0
+            fi
+            echo "ZD-SSH: starting recovered administrative SSH service" >/dev/console
+            if /etc/init.d/dropbear start >/dev/console 2>&1; then
+                echo "administrative SSH start requested" >> "$log"
+            else
+                echo "administrative SSH start failed" >> "$log"
+            fi
+            exit 0
+        fi
+        attempts=$((attempts + 1))
+        sleep 5
+    done
+    echo "configured state not observed" >> "$log"
+    echo "ZD-SSH: configured state not observed; administrative SSH left stopped" >/dev/console
+) &
+exit 0
+ZD_DROPBEAR_RECOVERY
+    /bin/busybox chmod 755 /newroot/etc/init.d/S99zd_dropbear_recovery
     if [ ! -f /newroot/etc/init.d/controller.vendor ]; then
         /bin/busybox cp -f /newroot/etc/init.d/controller /newroot/etc/init.d/controller.vendor
     fi

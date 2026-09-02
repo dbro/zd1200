@@ -9,6 +9,7 @@
 # management station on the selected VLAN.
 services:
   zd1200-prepare:
+    platform: ${ZD_HOST_PLATFORM:-linux/amd64}
     build:
       context: .
       dockerfile: Dockerfile
@@ -31,6 +32,7 @@ services:
     command: []
 
   zd1200:
+    platform: ${ZD_HOST_PLATFORM:-linux/amd64}
     build:
       context: .
       dockerfile: Dockerfile

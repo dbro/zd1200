@@ -48,6 +48,20 @@ class ContainerLifecycleTests(unittest.TestCase):
         self.assertIn("e2fsck -f -y /dev/hda4", handoff)
         self.assertIn("refusing to mount it", handoff)
 
+    def test_configured_guest_recovers_stock_administrative_ssh(self):
+        handoff = (ROOT / "boot-initrd-handoff").read_text()
+        self.assertIn("S99zd_dropbear_recovery", handoff)
+        self.assertIn("/writable/etc/airespider/system.xml", handoff)
+        self.assertIn("/usr/local/libexec/zd1200/dropbearkey", handoff)
+        self.assertIn("/etc/init.d/dropbear start", handoff)
+
+    def test_compose_declares_native_runtime_platform(self):
+        dockerfile = (ROOT / "Dockerfile").read_text()
+        self.assertIn("FROM --platform=$BUILDPLATFORM $DEBIAN_IMAGE", dockerfile)
+        for compose_name in ("docker-compose.yml", "docker-compose.macvlan.yml"):
+            compose = (ROOT / compose_name).read_text()
+            self.assertEqual(compose.count("platform: ${ZD_HOST_PLATFORM:-linux/amd64}"), 2)
+
     def test_healthcheck_rejects_filesystem_fault_after_ready(self):
         script = ROOT / "zd-healthcheck.sh"
         with tempfile.TemporaryDirectory() as temporary:
