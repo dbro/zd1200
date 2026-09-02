@@ -46,7 +46,13 @@ echo "BOOT-HANDOFF: runtime root_cli=$enable_root_cli support_end=$support_entit
 /newroot/sbin/e2fsck -p /dev/hda4 >/dev/console 2>&1
 fsck_status=$?
 if [ "$fsck_status" -ge 4 ]; then
-    echo "BOOT-HANDOFF: hda4 filesystem repair failed ($fsck_status)" >/dev/console
+    echo "BOOT-HANDOFF: hda4 needs full automatic repair ($fsck_status)" >/dev/console
+    /newroot/sbin/e2fsck -f -y /dev/hda4 >/dev/console 2>&1
+    fsck_status=$?
+fi
+if [ "$fsck_status" -ge 4 ]; then
+    echo "BOOT-HANDOFF: hda4 filesystem repair failed ($fsck_status); refusing to mount it" >/dev/console
+    exec /bin/sh
 fi
 # The synthetic partition table gives hda4 about 1.43 GiB, but its seed is a
 # byte-for-byte copy of the 143 MiB root filesystem. Copying the seed does not
@@ -997,6 +1003,22 @@ exit 0
 ZD_PING_MONITOR_INIT
         /bin/busybox chmod 755 /newroot/etc/init.d/S99zd_ping_monitor
     fi
+
+    # Docker lifecycle control uses an emulated second serial port. It is a
+    # private, non-networked channel that accepts one exact command and invokes
+    # the stock BusyBox PID-1 reboot path so databases and filesystems flush
+    # before the host terminates QEMU.
+    /bin/busybox cat > /newroot/etc/init.d/S98zd_container_control <<'ZD_CONTAINER_CONTROL'
+#!/bin/sh
+(
+    while IFS= read -r command; do
+        [ "$command" = reboot ] || continue
+        echo "ZD-CONTAINER-CONTROL: orderly reboot requested" >/dev/console
+        exec /sbin/reboot
+    done < /dev/ttyS1
+) &
+ZD_CONTAINER_CONTROL
+    /bin/busybox chmod 755 /newroot/etc/init.d/S98zd_container_control
     # Keep the vendor account database path. In particular, legacy AP-image
     # FTP authenticates its internal service account through this writable
     # database. Replacing it with a static passwd file makes vsftpd listen but

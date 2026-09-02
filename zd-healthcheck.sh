@@ -18,6 +18,11 @@ ready_line="$(grep -an 'ZD-HEALTH: guest web service ready' "$log_file" \
     | tail -n 1 | cut -d: -f1 || true)"
 stop_line="$(grep -anE 'System Shutdown|Restarting system' "$log_file" \
     | tail -n 1 | cut -d: -f1 || true)"
+filesystem_fault_line="$(grep -anE \
+    'EXT2-fs error \(device hda4\)|Remounting filesystem read-only|hda4 filesystem repair failed' \
+    "$log_file" | tail -n 1 | cut -d: -f1 || true)"
 
 [ -n "$ready_line" ] || exit 1
 [ -z "$stop_line" ] || [ "$ready_line" -gt "$stop_line" ] || exit 1
+[ -z "$filesystem_fault_line" ] \
+    || [ "$ready_line" -gt "$filesystem_fault_line" ] || exit 1

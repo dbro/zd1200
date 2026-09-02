@@ -9,6 +9,7 @@ synthetic_disk="$work_dir/synthetic-cf.img"
 disk_image="${DISK_IMAGE:-$synthetic_disk}"
 disk_format="${DISK_FORMAT:-raw}"
 qemu_tmp="$work_dir/qemu-tmp"
+control_socket="${CONTROL_SOCKET:-}"
 
 if ! command -v qemu-system-i386 >/dev/null 2>&1; then
     echo "qemu-system-i386 is not installed. Install qemu-system-x86 and retry." >&2
@@ -139,6 +140,15 @@ case "${ACCEL:-auto}" in
 esac
 echo "QEMU accelerator: ${accel_args[1]}" >&2
 
+control_args=()
+if [ -n "$control_socket" ]; then
+    rm -f -- "$control_socket"
+    control_args+=(
+        -chardev "socket,id=zdctl,path=$control_socket,server=on,wait=off"
+        -device isa-serial,chardev=zdctl
+    )
+fi
+
 exec qemu-system-i386 \
     -name zd1200-lab \
     "${accel_args[@]}" \
@@ -153,6 +163,9 @@ exec qemu-system-i386 \
     "${snapshot_args[@]}" \
     "${net_args[@]}" \
     "${nic_args[@]}" \
-    -nographic \
+    -display none \
+    -serial stdio \
+    -monitor none \
+    "${control_args[@]}" \
     "${pacing_args[@]}" \
     "${debug_args[@]}"

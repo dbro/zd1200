@@ -56,6 +56,9 @@ services:
       ZD_ENABLE_ROOT_CLI: ${ZD_ENABLE_ROOT_CLI:-0}
       ZD_ROOT_SSH_PUBLIC_KEY: ${ZD_ROOT_SSH_PUBLIC_KEY:-}
       ZD_SUPPORT_ENTITLEMENT_END: ${ZD_SUPPORT_ENTITLEMENT_END:-}
+      ZD_PING_CLIENT_TARGETS: ${ZD_PING_CLIENT_TARGETS:-}
+      ZD_PING_INTERVAL_SECONDS: ${ZD_PING_INTERVAL_SECONDS:-60}
+      ZD_SNAPSHOT_INTERVAL_SECONDS: ${ZD_SNAPSHOT_INTERVAL_SECONDS:-60}
       KERNEL_EXTRA: nohz=off
       WEB_WAIT_SECONDS: "600"
       VM_SNAPSHOT: "0"
@@ -70,7 +73,7 @@ services:
       - NET_ADMIN
     security_opt:
       - no-new-privileges:true
-    stop_grace_period: 20s
+    stop_grace_period: 2m
 
     healthcheck:
       test: ["CMD", "/opt/zd1200/zd-healthcheck.sh"]

@@ -19,6 +19,7 @@ persistent_disk="${PERSISTENT_DISK:-$state_dir/zd1200-vm.qcow2}"
 patched_kernel="${PATCHED_KERNEL:-$state_dir/bzImage.patched}"
 vm_snapshot="${VM_SNAPSHOT:-0}"
 cpu_limit="${CPU_LIMIT:-}"
+control_socket="${CONTROL_SOCKET:-/tmp/zd1200-control.sock}"
 if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
     vm_accel=kvm
 else
@@ -32,17 +33,43 @@ cleanup() {
             kill "$limiter_pid" 2>/dev/null || true
             wait "$limiter_pid" 2>/dev/null || true
         fi
+        # Ask the guest's stock PID 1 to perform its normal repository flush
+        # and shutdown sequence. The patched restart path resets QEMU after
+        # that sequence, so stop QEMU as soon as the serial restart marker is
+        # visible rather than allowing the next boot to proceed.
+        if [ -S "$control_socket" ]; then
+            marker_start=$(wc -l < "$log_file" 2>/dev/null || echo 0)
+            if python3 -c 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.settimeout(3); s.connect(sys.argv[1]); s.sendall(b"reboot\n"); s.close()' \
+                "$control_socket" 2>/dev/null; then
+                echo "Requested orderly ZoneDirector guest shutdown."
+                for _ in {1..90}; do
+                    if tail -n "+$((marker_start + 1))" "$log_file" 2>/dev/null \
+                        | grep -q 'Restarting system\.'; then
+                        echo "ZoneDirector guest completed its shutdown sequence."
+                        break
+                    fi
+                    kill -0 "$qemu_pid" 2>/dev/null || break
+                    sleep 1
+                done
+            fi
+        fi
         kill -CONT -- "-$qemu_pid" 2>/dev/null || true
         kill -TERM -- "-$qemu_pid" 2>/dev/null || true
-        for _ in {1..20}; do
+        for _ in {1..100}; do
             kill -0 "$qemu_pid" 2>/dev/null || break
             sleep 0.1
         done
         kill -KILL -- "-$qemu_pid" 2>/dev/null || true
         wait "$qemu_pid" 2>/dev/null || true
     fi
+    rm -f -- "$control_socket"
 }
-trap cleanup EXIT INT TERM
+on_signal() {
+    cleanup
+    exit 0
+}
+trap cleanup EXIT
+trap on_signal INT TERM
 
 cd "$work_dir" || exit 1
 mkdir -p "$state_dir"
@@ -95,6 +122,7 @@ setsid env KERNEL="$patched_kernel" INITRD="$runtime_initrd" \
     HTTPS_PORT="$https_port" \
     NETWORK_MODE="$network_mode" \
     TAP_IF="${TAP_IF:-tap-zd}" \
+    CONTROL_SOCKET="$control_socket" \
     QEMU_NIC_MAC="$identity_mac" \
     nice -n 10 ./run-zd1200-qemu.sh \
     >>"$log_file" 2>&1 </dev/null &

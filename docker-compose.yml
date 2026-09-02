@@ -76,7 +76,9 @@ services:
       - NET_ADMIN
     security_opt:
       - no-new-privileges:true
-    stop_grace_period: 20s
+    # Allow the launcher to request the guest's stock orderly shutdown and
+    # wait for its repository/filesystem flush before terminating QEMU.
+    stop_grace_period: 2m
 
     healthcheck:
       test: ["CMD", "/opt/zd1200/zd-healthcheck.sh"]
