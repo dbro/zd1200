@@ -53,6 +53,8 @@ class ContainerLifecycleTests(unittest.TestCase):
         self.assertIn("S99zd_dropbear_recovery", handoff)
         self.assertIn("/writable/etc/airespider/system.xml", handoff)
         self.assertIn("/usr/local/libexec/zd1200/dropbearkey", handoff)
+        self.assertNotIn("/usr/bin/dropbearkey -t ecdsa", handoff)
+        self.assertIn("ECDSA host key generated before administrative SSH startup", handoff)
         self.assertIn("/etc/init.d/dropbear start", handoff)
 
     def test_compose_declares_native_runtime_platform(self):

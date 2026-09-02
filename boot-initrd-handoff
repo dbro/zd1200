@@ -1239,9 +1239,15 @@ ZD_ROOT_SSH_INIT
             /bin/busybox cat > /newroot/etc/init.d/S59zd_ecdsa_hostkey <<'ZD_ECDSA_INIT'
 #!/bin/sh
 key=/etc/airespider/dropbear/dropbear_host_ecdsa_key
-if [ ! -s "$key" ] && [ -x /usr/bin/dropbearkey ]; then
-    /usr/bin/dropbearkey -t ecdsa -f "$key"
-    chmod 600 "$key" 2>/dev/null || true
+log=/writable/zd1200-ssh-recovery.log
+if [ ! -s "$key" ] && [ -x /usr/local/libexec/zd1200/dropbearkey ]; then
+    mkdir -p /etc/airespider/dropbear
+    if /usr/local/libexec/zd1200/dropbearkey -t ecdsa -f "$key" >> "$log" 2>&1; then
+        chmod 600 "$key" 2>/dev/null || true
+        echo "ECDSA host key generated before administrative SSH startup" >> "$log"
+    else
+        echo "ECDSA host-key generation failed before administrative SSH startup" >> "$log"
+    fi
 fi
 ZD_ECDSA_INIT
             /bin/busybox chmod 755 /newroot/etc/init.d/S59zd_ecdsa_hostkey
