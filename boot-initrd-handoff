@@ -303,6 +303,14 @@ echo D > /dev/watchdog 2>/dev/null || true
 # quoting here caused the old S98/S99 hook to be rejected by BusyBox.
 if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
     /bin/busybox mkdir -p /newroot/etc/init.d
+    if [ -r /zd-stock-web/app.js ] && [ -r /zd-stock-web/ruckus.js ]; then
+        /bin/busybox cp -f /zd-stock-web/app.js /newroot/web/build/app.js
+        /bin/busybox cp -f /zd-stock-web/ruckus.js /newroot/web/build/ruckus.js
+        /bin/busybox chmod 644 /newroot/web/build/app.js /newroot/web/build/ruckus.js
+        echo "BOOT-HANDOFF: restored pristine vendor admin bundles" >/dev/console
+    else
+        echo "BOOT-HANDOFF: pristine vendor admin bundles are unavailable" >/dev/console
+    fi
     if [ -n "$virtual_build_id" ]; then
         /bin/busybox sh -c "printf '%s\\n' '$virtual_build_id' > /newroot/etc/zd1200-virtual-build-id"
         /bin/busybox chmod 444 /newroot/etc/zd1200-virtual-build-id

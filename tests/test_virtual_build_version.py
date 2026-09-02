@@ -67,6 +67,9 @@ class VirtualBuildVersionTests(unittest.TestCase):
         self.assertIn("sysVersion:function(e){var t=Msg.SysVersion", handoff)
         self.assertIn("sysVersion:function(t){var e=Msg.SysVersion", handoff)
         self.assertIn("Menu patch failures must not prevent", handoff)
+        self.assertIn("restored pristine vendor admin bundles", handoff)
+        self.assertIn("zd-stock-web", runtime)
+        self.assertIn("debugfs -R", runtime)
 
 
 if __name__ == "__main__":

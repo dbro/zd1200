@@ -4,6 +4,7 @@ set -euo pipefail
 work_dir="$(cd "$(dirname "$0")" && pwd)"
 state_dir="${STATE_DIR:-$work_dir}"
 base_initrd="${BASE_INITRD:-$work_dir/image/bootinitramfs.gz}"
+rootfs_archive="${ZD_ROOTFS_ARCHIVE:-$work_dir/image/rootfs.ext2}"
 output="${RUNTIME_INITRD:-$state_dir/bootinitramfs.runtime.gz}"
 payload="${ZD_PAYLOAD:-${ZD1051_PAYLOAD:-$work_dir/image/zd-payload.tar.gz}}"
 stamp="$output.sha256"
@@ -93,9 +94,14 @@ if [ ! -f "$base_initrd" ]; then
     echo "Missing base initramfs: $base_initrd" >&2
     exit 1
 fi
+if [ ! -f "$rootfs_archive" ]; then
+    echo "Missing prepared vendor rootfs: $rootfs_archive" >&2
+    exit 1
+fi
 
 sources=(
     "$base_initrd"
+    "$rootfs_archive"
     "$work_dir/make-runtime-initrd.sh"
     "$work_dir/resolve-source-revision.sh"
     "$work_dir/boot-initrd-handoff"
@@ -131,10 +137,11 @@ fi
 mkdir -p "$state_dir"
 staging="$(mktemp -d "${TMPDIR:-/tmp}/zd-runtime-initrd.XXXXXX")"
 combined="$(mktemp "${TMPDIR:-/tmp}/zd-runtime-cpio.XXXXXX")"
+rootfs_image="$(mktemp "${TMPDIR:-/tmp}/zd-runtime-rootfs.XXXXXX")"
 temporary="$output.tmp.$$"
 cleanup() {
     rm -rf "$staging"
-    rm -f "$combined" "$temporary"
+    rm -f "$combined" "$rootfs_image" "$temporary"
 }
 trap cleanup EXIT
 
@@ -148,6 +155,21 @@ cp "$work_dir/analytics/network-snapshot-collect.sh" "$staging/zd-analytics/netw
 cp "$work_dir/analytics/ping-monitor-settings-sync.sh" "$staging/zd-analytics/ping-monitor-settings-sync.sh"
 cp "$work_dir/zd1200-ping-monitor" "$staging/zd-analytics/ping-monitor"
 cp "$work_dir/zd1200-local-getstat" "$staging/zd-analytics/zd1200-local-getstat"
+
+# Always start UI patching from the exact stock bundles in this release's
+# vendor rootfs. This prevents an interrupted or historical in-place patch
+# from leaving a persistent, syntactically invalid admin console.
+gzip -dc "$rootfs_archive" > "$rootfs_image"
+mkdir -p "$staging/zd-stock-web"
+for bundle_name in app ruckus; do
+    stock_bundle="$staging/zd-stock-web/$bundle_name.js"
+    debugfs -R "dump -p /web/build/$bundle_name.js $stock_bundle" \
+        "$rootfs_image" >/dev/null 2>&1 || true
+    if [ ! -s "$stock_bundle" ]; then
+        echo "Unable to extract stock web/build/$bundle_name.js from $rootfs_archive" >&2
+        exit 1
+    fi
+done
 if [ -f "$payload" ]; then
     mkdir -p "$staging/zd-payload"
     # The container deliberately drops CAP_CHOWN. GNU tar otherwise notices
