@@ -88,6 +88,18 @@ Record the controller release, guest MAC, generated-image SHA-256, and the
 state-volume backup location. Do not record passwords, session cookies, or
 private keys in an issue or test log.
 
+Verify the container lifecycle after configuration:
+
+1. Run `docker compose stop zd1200` and allow up to two minutes for the guest's
+   stock shutdown sequence.
+2. Confirm the serial log contains
+   `ZD-CONTAINER-CONTROL: orderly reboot requested` followed by
+   `Restarting system.`.
+3. Start it with `docker compose up -d` and confirm `/writable` mounts read-write
+   without an `hda4 filesystem repair failed` marker.
+4. Confirm `docker compose ps` reports healthy. A post-readiness hda4 ext2
+   error or read-only remount must make the health check fail.
+
 ### Optional ECDSA SSH host key
 
 With the default `ZD_ENABLE_ECDSA_SSH=0`, verify that the normal administrative

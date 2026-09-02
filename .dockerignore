@@ -7,6 +7,7 @@ rootfs/
 image/
 runtime/
 vendor/
+backups/
 analysis-*/
 *.log
 *.tgz

@@ -210,8 +210,20 @@ docker compose ps
 
 The named state volume retains the controller configuration, AP database,
 generated serial number, and generated MAC address. Back it up before making
-large configuration changes. To factory-reset the virtual controller, stop the
-stack and remove the state volume named by `ZD_STATE_VOLUME`.
+large configuration changes. Container stop can take up to two minutes while
+the guest performs its normal repository and filesystem flush; do not force
+QEMU or Docker to exit during that interval.
+
+To factory-reset the virtual controller, stop the stack and remove only its
+state volume:
+
+```sh
+docker compose down
+state_volume="$(sed -n 's/^ZD_STATE_VOLUME=//p' .env | head -n 1)"
+state_volume="${state_volume:-zd1200-state}"
+docker volume rm "$state_volume"
+docker compose up -d --build
+```
 
 To deliberately use a different controller download, stop the stack and
 remove only the runtime volume named by `ZD_RUNTIME_VOLUME`; leave the state
@@ -219,11 +231,11 @@ volume intact unless you also want a factory reset.
 
 ```sh
 docker compose down
-docker volume rm "$(grep '^ZD_RUNTIME_VOLUME=' .env | cut -d= -f2)"
+runtime_volume="$(sed -n 's/^ZD_RUNTIME_VOLUME=//p' .env | head -n 1)"
+runtime_volume="${runtime_volume:-zd1200-runtime}"
+docker volume rm "$runtime_volume"
 docker compose up -d --build
 ```
-
-If the variable is absent, the default runtime volume is `zd1200-runtime`.
 
 ### Optional `.env` settings
 
@@ -235,6 +247,20 @@ If the variable is absent, the default runtime volume is `zd1200-runtime`.
 | `ZD_ENABLE_ROOT_CLI=1` | Enables a local root shell through the authenticated ZD CLI script hook. It does not add a network listener. |
 | `ZD_ROOT_SSH_PUBLIC_KEY` | Enables public-key-only root SSH on TCP 2222 for 10.5.1.0.282. RSA and ECDSA keys are accepted; Ed25519 is not. |
 | `ZD_SUPPORT_ENTITLEMENT_END` | Creates a finite support-entitlement record ending on the supplied `YYYY-MM-DD` date. |
+| `ZD_PING_INTERVAL_SECONDS` and `ZD_SNAPSHOT_INTERVAL_SECONDS` | Set the initial 30–3600 second intervals. Both collectors remain disabled until enabled from the Ping Monitor page. |
+
+### Ping Monitor
+
+After the setup wizard and first restart, **Ping Monitor** appears as the last
+item under **Troubleshooting**. It records individual ICMP observations and
+retains raw ZoneDirector AP, client, and mesh snapshots for comparison.
+
+Both ping polling and configuration snapshots are disabled on a fresh
+controller. Enable either collector and choose its interval on the Ping
+Monitor page. The settings are stored through ZoneDirector's normal
+authenticated preference mechanism. Snapshot collection uses the controller's
+root-local vendor statistics socket, so no additional ZoneDirector role, user,
+or password is required.
 
 ## Networking choices and recovery
 
