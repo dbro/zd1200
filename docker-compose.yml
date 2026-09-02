@@ -3,8 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      entitlements:
-        - security.insecure
     image: local/zd1200-qemu:lab
     restart: "no"
     environment:
@@ -26,8 +24,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      entitlements:
-        - security.insecure
     image: local/zd1200-qemu:lab
     container_name: ${ZD_CONTAINER_NAME:-zd1200}
     restart: unless-stopped
