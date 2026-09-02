@@ -790,7 +790,7 @@ for bundle_name in app ruckus; do
     # The stock formatter supplies both the visible version and its tooltip.
     # Restore any prior virtual suffix before applying this boot's revision so
     # an upgraded checkout never continues to advertise an older commit.
-    if [ "$bundle_name" = app ] && [ -r "$root/etc/zd1200-virtual-build-id" ]; then
+    if [ -r "$root/etc/zd1200-virtual-build-id" ]; then
         virtual_build_id=$("$bb" cat "$root/etc/zd1200-virtual-build-id")
         case "$virtual_build_id" in
             ???????)
@@ -801,12 +801,19 @@ for bundle_name in app ruckus; do
             *) virtual_build_id= ;;
         esac
         if [ -n "$virtual_build_id" ]; then
-            "$bb" sed -i \
-                -e 's@sysVersion:function(e){var t=Msg.SysVersion;return(""==t?e:t)+" virtual [0-9a-f][0-9a-f]*"}@sysVersion:function(e){var t=Msg.SysVersion;return""==t?e:t}@g' \
-                -e "s@sysVersion:function(e){var t=Msg.SysVersion;return\"\"==t?e:t}@sysVersion:function(e){var t=Msg.SysVersion;return(\"\"==t?e:t)+\" virtual $virtual_build_id\"}@g" \
-                "$bundle"
+            if [ "$bundle_name" = app ]; then
+                "$bb" sed -i \
+                    -e 's@sysVersion:function(e){var t=Msg.SysVersion;return(""==t?e:t)+" virtual [0-9a-f][0-9a-f]*"}@sysVersion:function(e){var t=Msg.SysVersion;return""==t?e:t}@g' \
+                    -e "s@sysVersion:function(e){var t=Msg.SysVersion;return\"\"==t?e:t}@sysVersion:function(e){var t=Msg.SysVersion;return(\"\"==t?e:t)+\" virtual $virtual_build_id\"}@g" \
+                    "$bundle"
+            else
+                "$bb" sed -i \
+                    -e 's@sysVersion:function(t){var e=Msg.SysVersion;return(""==e?t:e)+" virtual [0-9a-f][0-9a-f]*"}@sysVersion:function(t){var e=Msg.SysVersion;return""==e?t:e}@g' \
+                    -e "s@sysVersion:function(t){var e=Msg.SysVersion;return\"\"==e?t:e}@sysVersion:function(t){var e=Msg.SysVersion;return(\"\"==e?t:e)+\" virtual $virtual_build_id\"}@g" \
+                    "$bundle"
+            fi
             if ! "$bb" grep -q "virtual $virtual_build_id" "$bundle"; then
-                echo "ZD virtual build: app.js version signature not found" >/dev/console
+                echo "ZD virtual build: $bundle_name.js version signature not found" >/dev/console
                 exit 1
             fi
         fi
