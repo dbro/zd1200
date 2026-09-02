@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # The guest is an i386 Linux 2.6.32 system. Keep its helper i386 even when
 # Docker builds the surrounding image on an ARM or x86-64 host.
 ARG ANALYTICS_HELPER_PLATFORM=linux/386
@@ -31,7 +33,7 @@ ARG SQLITE_YEAR=2013
 ARG SQLITE_AMALGAMATION=3071700
 ARG SQLITE_AMALGAMATION_SHA256=022ef41bd83a1333faf40dc8f1f8469205f4a18c30dc5e137889ba7ea924ef30
 
-RUN apt-get update \
+RUN --security=insecure apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \

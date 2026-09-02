@@ -59,6 +59,7 @@ class VirtualBuildVersionTests(unittest.TestCase):
             compose = (ROOT / compose_name).read_text()
             self.assertIn("target: /source-git", compose)
             self.assertIn("ZD_VIRTUAL_BUILD_ID", compose)
+            self.assertIn("security.insecure", compose)
         self.assertIn("VIRTUAL_BUILD_ID=%s", runtime)
         self.assertIn("ZD_RUNTIME_OPTIONS_FORMAT=2", runtime)
         self.assertIn("zd1200-virtual-build-id", handoff)
@@ -76,6 +77,7 @@ class VirtualBuildVersionTests(unittest.TestCase):
         self.assertIn("web/build/scripts.min.js", runtime)
         self.assertIn("web/scripts/utilOld.js", runtime)
         self.assertIn("debugfs -R", runtime)
+        self.assertIn("RUN --security=insecure", (ROOT / "Dockerfile").read_text())
 
 
 if __name__ == "__main__":
