@@ -170,6 +170,13 @@ for bundle_name in app ruckus; do
         exit 1
     fi
 done
+stock_legacy_util="$staging/zd-stock-web/utilOld.js"
+debugfs -R "dump -p /web/scripts/utilOld.js $stock_legacy_util" \
+    "$rootfs_image" >/dev/null 2>&1 || true
+if [ ! -s "$stock_legacy_util" ]; then
+    echo "Unable to extract stock web/scripts/utilOld.js from $rootfs_archive" >&2
+    exit 1
+fi
 if [ -f "$payload" ]; then
     mkdir -p "$staging/zd-payload"
     # The container deliberately drops CAP_CHOWN. GNU tar otherwise notices

@@ -303,13 +303,16 @@ echo D > /dev/watchdog 2>/dev/null || true
 # quoting here caused the old S98/S99 hook to be rejected by BusyBox.
 if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
     /bin/busybox mkdir -p /newroot/etc/init.d
-    if [ -r /zd-stock-web/app.js ] && [ -r /zd-stock-web/ruckus.js ]; then
+    if [ -r /zd-stock-web/app.js ] && [ -r /zd-stock-web/ruckus.js ] \
+        && [ -r /zd-stock-web/utilOld.js ]; then
         /bin/busybox cp -f /zd-stock-web/app.js /newroot/web/build/app.js
         /bin/busybox cp -f /zd-stock-web/ruckus.js /newroot/web/build/ruckus.js
-        /bin/busybox chmod 644 /newroot/web/build/app.js /newroot/web/build/ruckus.js
-        echo "BOOT-HANDOFF: restored pristine vendor admin bundles" >/dev/console
+        /bin/busybox cp -f /zd-stock-web/utilOld.js /newroot/web/scripts/utilOld.js
+        /bin/busybox chmod 644 /newroot/web/build/app.js /newroot/web/build/ruckus.js \
+            /newroot/web/scripts/utilOld.js
+        echo "BOOT-HANDOFF: restored pristine vendor admin scripts" >/dev/console
     else
-        echo "BOOT-HANDOFF: pristine vendor admin bundles are unavailable" >/dev/console
+        echo "BOOT-HANDOFF: pristine vendor admin scripts are unavailable" >/dev/console
     fi
     if [ -n "$virtual_build_id" ]; then
         /bin/busybox sh -c "printf '%s\\n' '$virtual_build_id' > /newroot/etc/zd1200-virtual-build-id"
@@ -832,6 +835,48 @@ for bundle_name in app ruckus; do
         fi
     fi
 done
+
+# mon_system.jsp predates both webpack bundles. It formats the same backend
+# version through Render.sysVersion in utilOld.js, so label that presentation
+# path as well without changing the system or AP firmware version data.
+legacy_util=$root/web/scripts/utilOld.js
+legacy_compressed=$legacy_util.gz
+if [ -r "$legacy_util" ] && [ -n "$virtual_build_id" ] \
+    && ! "$bb" grep -q "virtual $virtual_build_id" "$legacy_util"; then
+    legacy_tmp=$legacy_util.tmp.$$
+    if "$bb" awk -v id="$virtual_build_id" '
+        BEGIN { scope=0; patched=0 }
+        $0 == "_Fv.sysVersion=function(_184e){" { scope=1 }
+        scope && $0 ~ /^return _184e(\+" virtual [0-9a-f]+")?;$/ {
+            print "return _184e+\" virtual " id "\";"
+            patched++
+            next
+        }
+        scope && $0 ~ /^return v(\+" virtual [0-9a-f]+")?;$/ {
+            print "return v+\" virtual " id "\";"
+            patched++
+            scope=0
+            next
+        }
+        { print }
+        END { if (patched != 2) exit 3 }
+    ' "$legacy_util" > "$legacy_tmp"; then
+        "$bb" chmod 644 "$legacy_tmp"
+        "$bb" mv -f "$legacy_tmp" "$legacy_util"
+        if [ -e "$legacy_compressed" ]; then
+            legacy_gzip_tmp=$legacy_compressed.tmp.$$
+            if "$bb" gzip -c "$legacy_util" > "$legacy_gzip_tmp"; then
+                "$bb" chmod 644 "$legacy_gzip_tmp"
+                "$bb" mv -f "$legacy_gzip_tmp" "$legacy_compressed"
+            else
+                "$bb" rm -f "$legacy_gzip_tmp"
+            fi
+        fi
+    else
+        "$bb" rm -f "$legacy_tmp"
+        echo "ZD virtual build: utilOld.js version signature not found" >/dev/console
+    fi
+fi
 
 for bundle_name in app ruckus; do
     bundle=$root/web/build/$bundle_name.js
