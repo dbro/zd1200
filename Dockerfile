@@ -58,7 +58,6 @@ COPY --from=ping-monitor-sources /src/sqlite-amalgamation-${SQLITE_AMALGAMATION}
 COPY --from=ping-monitor-sources /packages /packages
 
 RUN dpkg --force-confold --force-architecture -i /packages/*.deb || true \
-    && apt-get -f install --no-download -y \
     && rm -rf /packages
 
 COPY analytics/zd1200-ping-monitor.c \
