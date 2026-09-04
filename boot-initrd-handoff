@@ -353,9 +353,13 @@ if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
     # captures. Its settings form writes only through ZD's authenticated native
     # preference endpoint; no custom CGI or EJS extension is required.
     if [ -r /zd-analytics/ping-monitor.html ] \
+        && [ -r /zd-analytics/ping-monitor-worker.js ] \
         && [ -x /zd-analytics/ping-monitor ] \
+        && [ -x /zd-analytics/ping-export ] \
         && [ -x /zd-analytics/zd1200-local-getstat ] \
         && [ -x /zd-analytics/network-snapshot-collect.sh ] \
+        && [ -x /zd-analytics/snapshot-index-publish.sh ] \
+        && [ -x /zd-analytics/ping-daily-publish.sh ] \
         && [ -x /zd-analytics/ping-monitor-settings-sync.sh ]; then
         /bin/busybox mkdir -p /newroot/usr/local/sbin
         # The selected vendor root does not provide a standalone sed utility.
@@ -365,14 +369,22 @@ if /bin/busybox mount -o remount,rw /newroot 2>/dev/null; then
         /bin/busybox chmod 755 /newroot/usr/local/sbin/busybox
         /bin/busybox cp -f /zd-analytics/ping-monitor /newroot/usr/local/sbin/zd1200-ping-monitor
         /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-ping-monitor
+        /bin/busybox cp -f /zd-analytics/ping-export /newroot/usr/local/sbin/zd1200-ping-export
+        /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-ping-export
+        /bin/busybox cp -f /zd-analytics/ping-daily-publish.sh /newroot/usr/local/sbin/zd1200-ping-daily-publish
+        /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-ping-daily-publish
         /bin/busybox cp -f /zd-analytics/network-snapshot-collect.sh /newroot/usr/local/sbin/zd1200-network-snapshot-collect
         /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-network-snapshot-collect
+        /bin/busybox cp -f /zd-analytics/snapshot-index-publish.sh /newroot/usr/local/sbin/zd1200-snapshot-index-publish
+        /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-snapshot-index-publish
         /bin/busybox cp -f /zd-analytics/zd1200-local-getstat /newroot/usr/local/sbin/zd1200-local-getstat
         /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-local-getstat
         /bin/busybox cp -f /zd-analytics/ping-monitor-settings-sync.sh /newroot/usr/local/sbin/zd1200-ping-monitor-settings-sync
         /bin/busybox chmod 755 /newroot/usr/local/sbin/zd1200-ping-monitor-settings-sync
         /bin/busybox cp -f /zd-analytics/ping-monitor.html /newroot/web/admin10/zd1200-ping-monitor.html
         /bin/busybox chmod 644 /newroot/web/admin10/zd1200-ping-monitor.html
+        /bin/busybox cp -f /zd-analytics/ping-monitor-worker.js /newroot/web/admin10/zd1200-ping-monitor-worker.js
+        /bin/busybox chmod 644 /newroot/web/admin10/zd1200-ping-monitor-worker.js
         # app.jsp loads app.js for the regular console. Keep the menu patch in
         # a small idempotent helper because the selected vendor root can replace
         # the early /newroot view during pivot. The late init hook invokes it
@@ -983,18 +995,29 @@ ZD_PING_MENU_PATCH_V4
         # then an idempotent verification against the selected active root.
         /bin/sh /newroot/usr/local/sbin/zd1200-patch-ping-menu /newroot || true
         /bin/busybox mkdir -p /data/zd1200-ping-monitor
+        /bin/busybox rm -f /newroot/web/admin10/zd1200-ping-monitor-snapshot-manifest.json
+        /bin/busybox ln -s /writable/zd1200-ping-monitor/snapshot-manifest.json \
+            /newroot/web/admin10/zd1200-ping-monitor-snapshot-manifest.json
+        /bin/busybox rm -rf /newroot/web/admin10/zd1200-ping-monitor-snapshot-index
+        /bin/busybox ln -s /writable/zd1200-ping-monitor/snapshot-index \
+            /newroot/web/admin10/zd1200-ping-monitor-snapshot-index
+        # Version 1 daily chunks replace the old server-aggregated ping JSON.
         /bin/busybox rm -f /newroot/web/admin10/zd1200-ping-monitor-snapshot.json
-        /bin/busybox ln -s /writable/zd1200-ping-monitor/snapshot.json \
-            /newroot/web/admin10/zd1200-ping-monitor-snapshot.json
-        /bin/busybox rm -f /newroot/web/admin10/zd1200-ping-monitor-snapshot-index.json
-        /bin/busybox ln -s /writable/zd1200-ping-monitor/snapshot-index.json \
-            /newroot/web/admin10/zd1200-ping-monitor-snapshot-index.json
         /bin/busybox rm -f /newroot/web/admin10/zd1200-ping-monitor-settings.json
         /bin/busybox ln -s /writable/zd1200-ping-monitor/settings.json \
             /newroot/web/admin10/zd1200-ping-monitor-settings.json
         /bin/busybox rm -f /newroot/web/admin10/zd1200-ping-monitor-snapshots
         /bin/busybox ln -s /writable/zd1200-ping-monitor/snapshots \
             /newroot/web/admin10/zd1200-ping-monitor-snapshots
+        /bin/busybox rm -f /newroot/web/admin10/zd1200-ping-monitor-targets.json
+        /bin/busybox ln -s /writable/zd1200-ping-monitor/targets.json \
+            /newroot/web/admin10/zd1200-ping-monitor-targets.json
+        /bin/busybox rm -f /newroot/web/admin10/zd1200-ping-monitor-daily-manifest.json
+        /bin/busybox ln -s /writable/zd1200-ping-monitor/daily-manifest.json \
+            /newroot/web/admin10/zd1200-ping-monitor-daily-manifest.json
+        /bin/busybox rm -f /newroot/web/admin10/zd1200-ping-monitor-daily
+        /bin/busybox ln -s /writable/zd1200-ping-monitor/daily \
+            /newroot/web/admin10/zd1200-ping-monitor-daily
         # The monitor records raw ping observations only. Network state is
         # retained separately as three opaque stock XML responses, so later
         # analysis can compare any two time points without assuming in advance
@@ -1006,12 +1029,14 @@ ZD_PING_MENU_PATCH_V4
     # active. This also regenerates app.js.gz so content negotiation cannot
     # serve an unpatched copy.
     /usr/local/sbin/zd1200-patch-ping-menu || true
-    output=/writable/zd1200-ping-monitor/snapshot.json
-    snapshot_index=/writable/zd1200-ping-monitor/snapshot-index.json
     snapshot_dir=/writable/zd1200-ping-monitor/snapshots
+    current_client=/writable/zd1200-ping-monitor/current-client.xml
     configured_targets=/writable/zd1200-ping-monitor/client-targets.conf
     intervals=/writable/zd1200-ping-monitor/intervals.conf
     settings_status=/writable/zd1200-ping-monitor/settings.json
+    target_metadata=/writable/zd1200-ping-monitor/targets.json
+    daily_manifest=/writable/zd1200-ping-monitor/daily-manifest.json
+    snapshot_manifest=/writable/zd1200-ping-monitor/snapshot-manifest.json
     client_snapshot=
     preference_updated_at=
     # Collection is opt-in on a fresh controller. A saved native preference
@@ -1024,6 +1049,10 @@ ZD_PING_MENU_PATCH_V4
     last_snapshot=0
     settings_source=defaults
     mkdir -p /writable/zd1200-ping-monitor "$snapshot_dir"
+    /usr/local/sbin/zd1200-snapshot-index-publish rebuild 2>/dev/null || true
+    [ -r "$snapshot_manifest" ] || printf '{"version":1,"generated_at":0,"periods":[]}\n' > "$snapshot_manifest"
+    [ -r "$target_metadata" ] || printf '{"status":"waiting","format_version":1,"targets":[]}\n' > "$target_metadata"
+    [ -r "$daily_manifest" ] || printf '{"status":"ok","format_version":1,"generated_at":0,"periods":[]}\n' > "$daily_manifest"
     # Remove the obsolete persistent transfer files from the earlier bridge.
     rm -f /writable/zd1200-ping-monitor/native-settings.conf \
         /writable/zd1200-ping-monitor/.settings-session.cookie \
@@ -1108,16 +1137,11 @@ ZD_PING_MENU_PATCH_V4
             # helper records that case as "unknown", rather than presenting a
             # stale client state as current evidence.
             client_snapshot=
-            if /usr/local/sbin/zd1200-network-snapshot-collect 2>/dev/null; then
-                client_snapshot=$(ls -1t "$snapshot_dir"/*-client.xml 2>/dev/null | head -n 1 || true)
+            if /usr/local/sbin/zd1200-network-snapshot-collect "$now" 2>/dev/null; then
+                [ -r "$current_client" ] && client_snapshot=$current_client
+                /usr/local/sbin/zd1200-snapshot-index-publish add "$now" 2>/dev/null || true
             fi
             /usr/local/sbin/zd1200-ping-monitor prune-snapshots 2>/dev/null || true
-            temporary="$snapshot_index.tmp.$$"
-            if /usr/local/sbin/zd1200-ping-monitor snapshot-index > "$temporary"; then
-                mv -f "$temporary" "$snapshot_index"
-            else
-                rm -f "$temporary"
-            fi
             last_snapshot=$now
         elif [ "$snapshot_enabled" = 0 ]; then
             client_snapshot=
@@ -1125,15 +1149,31 @@ ZD_PING_MENU_PATCH_V4
         if [ "$ping_enabled" = 1 ] \
             && [ $((now - last_ping)) -ge "$ping_interval" ]; then
             /usr/local/sbin/zd1200-ping-monitor tick "$client_snapshot" 2>/dev/null || true
-            temporary="$output.tmp.$$"
-            if /usr/local/sbin/zd1200-ping-monitor pings-json > "$temporary"; then
-                mv -f "$temporary" "$output"
-            else
-                rm -f "$temporary"
-            fi
+            # Target synchronization above first maps legacy numeric AP rows
+            # onto MAC-primary identities. Backfill only after that migration.
+            /usr/local/sbin/zd1200-ping-daily-publish backfill "$now" 2>/dev/null || true
+            # Materialize the current UTC day only. Completed daily chunks are
+            # immutable and the browser derives every ping metric from these
+            # raw one-byte observations.
+            /usr/local/sbin/zd1200-ping-daily-publish "$now" 2>/dev/null || true
             last_ping=$now
         fi
-        sleep 30
+        # Sleep only until the next collection is due. A fixed 30-second
+        # sleep would add the collection runtime to every configured interval
+        # (for example, a 10-second ping round would recur every 40 seconds).
+        after=$(date +%s)
+        next_delay=30
+        if [ "$ping_enabled" = 1 ]; then
+            remaining=$((last_ping + ping_interval - after))
+            [ "$remaining" -lt 1 ] && remaining=1
+            [ "$remaining" -lt "$next_delay" ] && next_delay=$remaining
+        fi
+        if [ "$snapshot_enabled" = 1 ]; then
+            remaining=$((last_snapshot + snapshot_interval - after))
+            [ "$remaining" -lt 1 ] && remaining=1
+            [ "$remaining" -lt "$next_delay" ] && next_delay=$remaining
+        fi
+        sleep "$next_delay"
     done
 ) &
 exit 0

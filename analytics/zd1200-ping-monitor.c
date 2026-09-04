@@ -1,20 +1,25 @@
 /* Local ping results and raw-network-snapshot index for virtual ZD1200.
  *
- * Network XML is intentionally never parsed or normalized here. The shell
- * collector writes the three stock responses as timestamped files; this helper
- * stores ping results and publishes only a directory index for the browser.
+ * The current client view is parsed once to discover clients and build an
+ * association lookup. Retained AP/client/mesh snapshots remain opaque XML.
  */
 #include <sqlite3.h>
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <errno.h>
+#include <netinet/ip.h>
+#include <netinet/ip_icmp.h>
+#include <poll.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -23,10 +28,26 @@
 #define SNAPSHOT_DIR "/writable/zd1200-ping-monitor/snapshots"
 #define RETENTION_SECONDS (30 * 24 * 60 * 60)
 #define TIMEOUT_MS 1000
+#define PING_BATCH_SIZE 512
+#define ICMP_MAGIC 0x5a443132U
 #define HOURS 24
 #define MAX_BUCKET_SAMPLES 800
 
 struct target { char *id, *name, *ip; struct target *next; };
+struct client { char *mac, *ip, *name; };
+struct client_view { struct client *items; size_t count, capacity; int valid; };
+struct measurement {
+    sqlite3_int64 id;
+    struct in_addr address;
+    const char *state;
+    long long sent_ms;
+    int rtt_ms, responded, pingable;
+};
+struct echo_packet {
+    struct icmphdr header;
+    uint32_t magic;
+    uint32_t index;
+};
 static int add_client(const char *mac, const char *ip, const char *name);
 
 static char *copy_text(const char *value) {
@@ -126,7 +147,10 @@ static struct target *read_aps(void) {
     fclose(f); text[size]=0; tag=text;
     while ((tag=strstr(tag,"<ap ")) != NULL) {
         char *end=strchr(tag,'>'); struct target *t; char *id,*name,*ip;
-        if (!end) break; id=attr(tag,end,"id"); name=attr(tag,end,"name"); ip=attr(tag,end,"ip");
+        if (!end) break; id=attr(tag,end,"mac");name=attr(tag,end,"name");
+        if(!name||!*name){free(name);name=attr(tag,end,"ap-name");}
+        if(!name||!*name){free(name);name=attr(tag,end,"devname");}
+        ip=attr(tag,end,"ip");
         if (id && name && ip) { struct in_addr tmp; if (inet_pton(AF_INET,ip,&tmp)==1 &&
             (t=calloc(1,sizeof(*t))) != NULL) { t->id=id;t->name=name;t->ip=ip;t->next=head;head=t; id=name=ip=NULL; } }
         free(id);free(name);free(ip);tag=end+1;
@@ -147,6 +171,21 @@ static int seed(sqlite3 *db, struct target *targets, time_t now) {
     sqlite3_finalize(s); return rc==SQLITE_OK?0:1;
 }
 
+static int merge_legacy_aps(sqlite3 *db,const struct target *targets) {
+    sqlite3_stmt *move=NULL,*remove=NULL;int rc=sqlite3_prepare_v2(db,
+        "UPDATE ping_result SET target_id=(SELECT id FROM target WHERE kind='ap' AND ap_id=?) "
+        "WHERE target_id IN(SELECT id FROM target WHERE kind='ap' AND length(ap_id)<>17 AND ip=?)",-1,&move,NULL);
+    if(rc==SQLITE_OK)rc=sqlite3_prepare_v2(db,
+        "DELETE FROM target WHERE kind='ap' AND length(ap_id)<>17 AND ip=?",-1,&remove,NULL);
+    for(;rc==SQLITE_OK&&targets;targets=targets->next){
+        sqlite3_bind_text(move,1,targets->id,-1,SQLITE_TRANSIENT);sqlite3_bind_text(move,2,targets->ip,-1,SQLITE_TRANSIENT);
+        rc=sqlite3_step(move)==SQLITE_DONE?sqlite3_reset(move):SQLITE_ERROR;sqlite3_clear_bindings(move);if(rc!=SQLITE_OK)break;
+        sqlite3_bind_text(remove,1,targets->ip,-1,SQLITE_TRANSIENT);
+        rc=sqlite3_step(remove)==SQLITE_DONE?sqlite3_reset(remove):SQLITE_ERROR;sqlite3_clear_bindings(remove);
+    }
+    sqlite3_finalize(move);sqlite3_finalize(remove);return rc==SQLITE_OK?0:1;
+}
+
 static int valid_mac(const char *mac) {
     int i;
     if (!mac || strlen(mac) != 17) return 0;
@@ -157,78 +196,186 @@ static int valid_mac(const char *mac) {
     return 1;
 }
 
-static int xml_has_client(const char *path, const char *mac) {
-    FILE *f; long size; char *text, *tag; int found = 0;
-    if (!path || !valid_mac(mac) || !(f = fopen(path, "r"))) return 0;
-    if (fseek(f, 0, SEEK_END) || (size = ftell(f)) < 0 || fseek(f, 0, SEEK_SET)) { fclose(f); return 0; }
-    text = malloc((size_t)size + 1);
-    if (!text || fread(text, 1, (size_t)size, f) != (size_t)size) { free(text); fclose(f); return 0; }
-    fclose(f); text[size] = 0; tag = text;
-    while ((tag = strstr(tag, "<client ")) != NULL) {
-        char *end = strchr(tag, '>'); char *current;
-        if (!end) break;
-        current = attr(tag, end, "mac");
-        if (current && strcasecmp(current, mac) == 0) found = 1;
-        free(current);
-        if (found) break;
-        tag = end + 1;
+static void free_client_view(struct client_view *view) {
+    size_t i;
+    for (i=0;i<view->count;i++) {
+        free(view->items[i].mac); free(view->items[i].ip); free(view->items[i].name);
     }
-    free(text); return found;
+    free(view->items); memset(view,0,sizeof(*view));
 }
 
-static int ping(const char *ip, int *rtt) {
-    int fd[2], status; pid_t child; char out[2048],*m; ssize_t used=0,n;
-    struct in_addr a; if(inet_pton(AF_INET,ip,&a)!=1 || pipe(fd)) return 0;
-    child=fork(); if(child==0) { dup2(fd[1],1);dup2(fd[1],2);close(fd[0]);close(fd[1]);
-        execl("/bin/ping","ping","-c","1","-W","1",ip,(char*)NULL);
-        execl("/bin/busybox","busybox","ping","-c","1","-W","1",ip,(char*)NULL); _exit(127); }
-    close(fd[1]); while(used<(ssize_t)sizeof(out)-1 && (n=read(fd[0],out+used,sizeof(out)-1-used))>0)used+=n;
-    close(fd[0]);out[used]=0;waitpid(child,&status,0);m=strstr(out,"time=");
-    if(m && WIFEXITED(status) && WEXITSTATUS(status)==0) { double v=strtod(m+5,NULL);if(v<0)v=0;if(v>TIMEOUT_MS)v=TIMEOUT_MS;*rtt=(int)(v+.5);return 1; }
-    *rtt=TIMEOUT_MS;return 0;
+static int client_compare(const void *left, const void *right) {
+    const struct client *a=(const struct client *)left,*b=(const struct client *)right;
+    return strcasecmp(a->mac,b->mac);
 }
 
-/* A target is discovered from the controller's current client view.  The
- * address is deliberately treated as a refreshable observation: the MAC is
- * what identifies the client to this monitor. */
-static void sync_clients(const char *path) {
-    FILE *f; long size; char *text, *tag;
-    if (!path || !(f = fopen(path, "r"))) return;
-    if (fseek(f,0,SEEK_END) || (size=ftell(f))<0 || fseek(f,0,SEEK_SET)) { fclose(f); return; }
+/* Parse the current client XML exactly once. The same in-memory view drives
+ * discovery, address refresh, and association checks for this whole round. */
+static struct client_view parse_client_view(const char *path) {
+    struct client_view view={0}; FILE *f; long size; char *text=NULL,*tag;
+    if(!path || !(f=fopen(path,"r")))return view;
+    if(fseek(f,0,SEEK_END)||(size=ftell(f))<0||fseek(f,0,SEEK_SET)){fclose(f);return view;}
     text=malloc((size_t)size+1);
-    if (!text || fread(text,1,(size_t)size,f)!=(size_t)size) { free(text); fclose(f); return; }
-    fclose(f); text[size]=0; tag=text;
-    while ((tag=strstr(tag,"<client ")) != NULL) {
-        char *end=strchr(tag,'>'), *mac, *ip, *name;
-        if (!end) break;
-        mac=attr(tag,end,"mac"); ip=attr(tag,end,"ip"); name=attr(tag,end,"hostname");
-        if (!name || !*name) { free(name); name=attr(tag,end,"user"); }
-        if (!name || !*name) { free(name); name=copy_text(mac); }
-        if (mac && ip && name) add_client(mac,ip,name);
-        free(mac); free(ip); free(name); tag=end+1;
+    if(!text||fread(text,1,(size_t)size,f)!=(size_t)size){free(text);fclose(f);return view;}
+    fclose(f);text[size]=0;tag=text;
+    while((tag=strstr(tag,"<client "))!=NULL){
+        char *end=strchr(tag,'>'),*mac,*ip,*name;struct client *grown;
+        if(!end)break;
+        mac=attr(tag,end,"mac");ip=attr(tag,end,"ip");name=attr(tag,end,"hostname");
+        if(!name||!*name){free(name);name=attr(tag,end,"user");}
+        if(!name||!*name){free(name);name=copy_text(mac);}
+        if(mac&&valid_mac(mac)){
+            if(view.count==view.capacity){
+                size_t capacity=view.capacity?view.capacity*2:128;
+                grown=realloc(view.items,capacity*sizeof(*grown));
+                if(!grown){free(mac);free(ip);free(name);free(text);free_client_view(&view);return view;}
+                view.items=grown;view.capacity=capacity;
+            }
+            view.items[view.count].mac=mac;view.items[view.count].ip=ip;
+            view.items[view.count].name=name;view.count++;mac=ip=name=NULL;
+        }
+        free(mac);free(ip);free(name);tag=end+1;
     }
-    free(text);
+    free(text);qsort(view.items,view.count,sizeof(*view.items),client_compare);view.valid=1;return view;
+}
+
+static int client_present(const struct client_view *view,const char *mac) {
+    size_t low=0,high=view->count;
+    if(!mac)return 0;
+    while(low<high){size_t middle=low+(high-low)/2;int order=strcasecmp(mac,view->items[middle].mac);
+        if(order==0)return 1;if(order<0)high=middle;else low=middle+1;}
+    return 0;
+}
+
+/* Refresh all discovered clients with two prepared statements in the caller's
+ * transaction. This replaces thousands of database opens and commits. */
+static int sync_clients(sqlite3 *db,const struct client_view *view,time_t now) {
+    sqlite3_stmt *insert=NULL,*update=NULL;size_t i;int rc=SQLITE_OK;
+    rc=sqlite3_prepare_v2(db,"INSERT OR IGNORE INTO target(kind,ip,client_mac,ap_id,name,enabled,created_at) VALUES('client',?,?,NULL,?,1,?)",-1,&insert,NULL);
+    if(rc==SQLITE_OK)rc=sqlite3_prepare_v2(db,"UPDATE target SET ip=?,name=?,enabled=1 WHERE kind='client' AND client_mac=?",-1,&update,NULL);
+    for(i=0;rc==SQLITE_OK&&i<view->count;i++){
+        struct in_addr address;const struct client *client=&view->items[i];
+        if(!client->ip||!client->name||inet_pton(AF_INET,client->ip,&address)!=1)continue;
+        sqlite3_bind_text(insert,1,client->ip,-1,SQLITE_TRANSIENT);sqlite3_bind_text(insert,2,client->mac,-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(insert,3,client->name,-1,SQLITE_TRANSIENT);sqlite3_bind_int64(insert,4,now);
+        rc=sqlite3_step(insert)==SQLITE_DONE?sqlite3_reset(insert):SQLITE_ERROR;sqlite3_clear_bindings(insert);
+        if(rc!=SQLITE_OK)break;
+        sqlite3_bind_text(update,1,client->ip,-1,SQLITE_TRANSIENT);sqlite3_bind_text(update,2,client->name,-1,SQLITE_TRANSIENT);
+        sqlite3_bind_text(update,3,client->mac,-1,SQLITE_TRANSIENT);
+        rc=sqlite3_step(update)==SQLITE_DONE?sqlite3_reset(update):SQLITE_ERROR;sqlite3_clear_bindings(update);
+    }
+    sqlite3_finalize(insert);sqlite3_finalize(update);return rc;
+}
+
+static long long milliseconds(void) {
+    struct timeval value;gettimeofday(&value,NULL);
+    return (long long)value.tv_sec*1000+value.tv_usec/1000;
+}
+
+static uint16_t icmp_checksum(const void *data,size_t length) {
+    const uint16_t *word=(const uint16_t *)data;uint32_t sum=0;
+    while(length>1){sum+=*word++;length-=2;}
+    if(length)sum+=*(const unsigned char *)word;
+    while(sum>>16)sum=(sum&0xffff)+(sum>>16);
+    return (uint16_t)~sum;
+}
+
+/* Probe at most 512 targets at once. Ten one-second timeout windows cover
+ * 5,000 targets, leaving ample room in a 30-second collection interval. */
+static int parallel_ping(struct measurement *items,size_t count) {
+    size_t *indices=NULL,ping_count=0,i,start;int sock,receive_buffer=4*1024*1024;
+    uint16_t identifier=(uint16_t)(((unsigned)getpid()^(unsigned)time(NULL))&0xffff);
+    indices=malloc(count*sizeof(*indices));if(!indices&&count)return -1;
+    for(i=0;i<count;i++)if(items[i].pingable)indices[ping_count++]=i;
+    sock=socket(AF_INET,SOCK_RAW,IPPROTO_ICMP);
+    if(sock<0){perror("raw ICMP socket");free(indices);return -1;}
+    setsockopt(sock,SOL_SOCKET,SO_RCVBUF,&receive_buffer,sizeof(receive_buffer));
+    for(start=0;start<ping_count;start+=PING_BATCH_SIZE){
+        size_t end=start+PING_BATCH_SIZE;int pending=0;long long deadline=0;
+        if(end>ping_count)end=ping_count;
+        for(i=start;i<end;i++){
+            struct measurement *item=&items[indices[i]];struct echo_packet packet;struct sockaddr_in destination;
+            memset(&packet,0,sizeof(packet));packet.header.type=ICMP_ECHO;
+            packet.header.un.echo.id=htons(identifier);packet.header.un.echo.sequence=htons((uint16_t)(i+1));
+            packet.magic=htonl(ICMP_MAGIC);packet.index=htonl((uint32_t)i);
+            packet.header.checksum=icmp_checksum(&packet,sizeof(packet));
+            memset(&destination,0,sizeof(destination));destination.sin_family=AF_INET;destination.sin_addr=item->address;
+            item->sent_ms=milliseconds();item->state="timeout";item->rtt_ms=TIMEOUT_MS;
+            if(sendto(sock,&packet,sizeof(packet),0,(struct sockaddr *)&destination,sizeof(destination))==(ssize_t)sizeof(packet)){
+                long long item_deadline=item->sent_ms+TIMEOUT_MS;if(item_deadline>deadline)deadline=item_deadline;pending++;
+            }
+        }
+        while(pending>0){
+            unsigned char buffer[2048];struct sockaddr_in source;socklen_t source_length=sizeof(source);
+            struct pollfd descriptor;long long current=milliseconds();int wait,ready;ssize_t length;
+            if(current>=deadline)break;wait=(int)(deadline-current);
+            descriptor.fd=sock;descriptor.events=POLLIN;descriptor.revents=0;
+            ready=poll(&descriptor,1,wait);if(ready<=0){if(ready<0&&errno==EINTR)continue;break;}
+            length=recvfrom(sock,buffer,sizeof(buffer),0,(struct sockaddr *)&source,&source_length);
+            if(length>=(ssize_t)(sizeof(struct iphdr)+sizeof(struct echo_packet))){
+                struct iphdr *ip=(struct iphdr *)buffer;size_t offset=(size_t)ip->ihl*4;
+                if(offset+sizeof(struct echo_packet)<=(size_t)length){
+                    struct echo_packet *packet=(struct echo_packet *)(buffer+offset);uint32_t position=ntohl(packet->index);
+                    if(packet->header.type==ICMP_ECHOREPLY&&ntohs(packet->header.un.echo.id)==identifier
+                        &&ntohl(packet->magic)==ICMP_MAGIC&&position>=start&&position<end){
+                        struct measurement *item=&items[indices[position]];
+                        if(!item->responded&&source.sin_addr.s_addr==item->address.s_addr){
+                            long long elapsed=milliseconds()-item->sent_ms;if(elapsed<0)elapsed=0;if(elapsed>TIMEOUT_MS)elapsed=TIMEOUT_MS;
+                            item->rtt_ms=(int)elapsed;item->responded=1;item->state="ok";pending--;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    close(sock);free(indices);return 0;
+}
+
+static int load_measurements(sqlite3 *db,const struct client_view *clients,struct measurement **result,size_t *result_count) {
+    sqlite3_stmt *query=NULL;struct measurement *items=NULL;size_t count=0,capacity=0;int rc;
+    rc=sqlite3_prepare_v2(db,"SELECT id,kind,ip,client_mac FROM target WHERE enabled=1 ORDER BY id",-1,&query,NULL);
+    while(rc==SQLITE_OK){
+        int step=sqlite3_step(query);
+        if(step!=SQLITE_ROW){rc=step;break;}
+        {
+        const char *kind=(const char *)sqlite3_column_text(query,1),*ip=(const char *)sqlite3_column_text(query,2),*mac=(const char *)sqlite3_column_text(query,3);
+        struct measurement *grown,*item;
+        if(count==capacity){size_t next=capacity?capacity*2:256;grown=realloc(items,next*sizeof(*grown));if(!grown){rc=SQLITE_NOMEM;break;}items=grown;capacity=next;}
+        item=&items[count++];memset(item,0,sizeof(*item));item->id=sqlite3_column_int64(query,0);item->rtt_ms=TIMEOUT_MS;
+        if(kind&&strcmp(kind,"client")==0&&!clients->valid)item->state="unknown";
+        else if(kind&&strcmp(kind,"client")==0&&!client_present(clients,mac))item->state="not_associated";
+        else if(ip&&inet_pton(AF_INET,ip,&item->address)==1){item->state="timeout";item->pingable=1;}
+        else item->state="unknown";
+        }
+    }
+    sqlite3_finalize(query);if(rc!=SQLITE_DONE){free(items);return rc;}*result=items;*result_count=count;return SQLITE_OK;
 }
 
 static int tick(const char *client_xml) {
-    sqlite3 *db=NULL;sqlite3_stmt *q=NULL,*put=NULL;struct target *aps=read_aps();time_t now=time(NULL);int rc;
-    sync_clients(client_xml);
-    rc=sqlite3_open(DB,&db);
-    if(rc==SQLITE_OK)rc=schema(db);if(rc==SQLITE_OK)rc=seed(db,aps,now);free_targets(aps);
-    if(rc==SQLITE_OK)rc=sqlite3_prepare_v2(db,"SELECT id,kind,ip,client_mac FROM target WHERE enabled=1 ORDER BY id",-1,&q,NULL);
-    if(rc==SQLITE_OK)rc=sqlite3_prepare_v2(db,"INSERT INTO ping_result(observed_at,target_id,rtt_ms,responded,state) VALUES(?,?,?,?,?)",-1,&put,NULL);
-    while(rc==SQLITE_OK && sqlite3_step(q)==SQLITE_ROW) { int rtt=TIMEOUT_MS,ok=0; const char *state="timeout";
-        const char *kind=(const char*)sqlite3_column_text(q,1), *ip=(const char*)sqlite3_column_text(q,2), *mac=(const char*)sqlite3_column_text(q,3);
-        /* Never infer a client's presence from an old snapshot.  A missing
-         * current controller response is an unknown measurement, distinct
-         * from both ICMP loss and a confirmed non-associated client. */
-        if(kind && strcmp(kind,"client")==0 && (!client_xml || !*client_xml)) state="unknown";
-        else if(kind && strcmp(kind,"client")==0 && !xml_has_client(client_xml,mac)) state="not_associated";
-        else { ok=ping(ip,&rtt); state=ok?"ok":"timeout"; }
-        sqlite3_bind_int64(put,1,now);sqlite3_bind_int64(put,2,sqlite3_column_int64(q,0));sqlite3_bind_int(put,3,rtt);sqlite3_bind_int(put,4,ok);sqlite3_bind_text(put,5,state,-1,SQLITE_STATIC);
-        rc=sqlite3_step(put);if(rc==SQLITE_DONE)rc=sqlite3_reset(put);sqlite3_clear_bindings(put); }
-    if(rc==SQLITE_OK || rc==SQLITE_DONE) { char prune[160];snprintf(prune,sizeof(prune),"DELETE FROM ping_result WHERE observed_at<%lld",(long long)(now-RETENTION_SECONDS));sql(db,prune);rc=SQLITE_OK; }
-    sqlite3_finalize(put);sqlite3_finalize(q);sqlite3_close(db);return rc==SQLITE_OK?0:1;
+    sqlite3 *db=NULL;sqlite3_stmt *put=NULL;struct target *aps=read_aps();struct client_view clients=parse_client_view(client_xml);
+    struct measurement *items=NULL;size_t count=0,i;time_t now=time(NULL);const char *stage="open database";int rc=sqlite3_open(DB,&db);
+    if(rc==SQLITE_OK){stage="initialize schema";rc=schema(db);}
+    if(rc==SQLITE_OK){stage="begin target sync";rc=sql(db,"BEGIN IMMEDIATE");}
+    if(rc==SQLITE_OK){stage="sync access points";rc=seed(db,aps,now);}
+    if(rc==SQLITE_OK){stage="merge legacy access points";rc=merge_legacy_aps(db,aps);}
+    free_targets(aps);
+    if(rc==SQLITE_OK&&clients.valid){stage="sync clients";rc=sync_clients(db,&clients,now);}
+    if(rc==SQLITE_OK){stage="commit target sync";rc=sql(db,"COMMIT");}else if(db&&!sqlite3_get_autocommit(db))sql(db,"ROLLBACK");
+    if(rc==SQLITE_OK){stage="load targets";rc=load_measurements(db,&clients,&items,&count);}
+    if(rc==SQLITE_OK){stage="send ICMP probes";if(parallel_ping(items,count)!=0)rc=SQLITE_IOERR;}
+    if(rc==SQLITE_OK){stage="begin result write";rc=sql(db,"BEGIN IMMEDIATE");}
+    if(rc==SQLITE_OK){stage="prepare result write";rc=sqlite3_prepare_v2(db,"INSERT INTO ping_result(observed_at,target_id,rtt_ms,responded,state) VALUES(?,?,?,?,?)",-1,&put,NULL);}
+    if(rc==SQLITE_OK)stage="write results";
+    for(i=0;rc==SQLITE_OK&&i<count;i++){
+        sqlite3_bind_int64(put,1,now);sqlite3_bind_int64(put,2,items[i].id);sqlite3_bind_int(put,3,items[i].rtt_ms);
+        sqlite3_bind_int(put,4,items[i].responded);sqlite3_bind_text(put,5,items[i].state,-1,SQLITE_STATIC);
+        rc=sqlite3_step(put)==SQLITE_DONE?sqlite3_reset(put):SQLITE_ERROR;sqlite3_clear_bindings(put);
+    }
+    sqlite3_finalize(put);
+    if(rc==SQLITE_OK){char prune[160];stage="prune results";snprintf(prune,sizeof(prune),"DELETE FROM ping_result WHERE observed_at<%lld",(long long)(now-RETENTION_SECONDS));rc=sql(db,prune);}
+    if(rc==SQLITE_OK){stage="commit results";rc=sql(db,"COMMIT");}else if(db&&!sqlite3_get_autocommit(db))sql(db,"ROLLBACK");
+    if(rc!=SQLITE_OK)fprintf(stderr,"ping round (%s, rc=%d): %s\n",stage,rc,db?sqlite3_errmsg(db):"database unavailable");
+    free(items);free_client_view(&clients);sqlite3_close(db);return rc==SQLITE_OK?0:1;
 }
 
 static int add_client(const char *mac, const char *ip, const char *name) {
@@ -298,19 +445,27 @@ static int pings_json(void) {
     puts("]}");sqlite3_finalize(s);sqlite3_close(db);return 0;
 }
 
-static long snapshot_time(const char *name) { char *end;long v=strtol(name,&end,10);return (v>0 && end && strcmp(end,"-ap.xml")==0)?v:0; }
+static long snapshot_time(const char *name) { char *end;long v=strtol(name,&end,10);return (v>0&&end&&(!strcmp(end,"-ap.xml")||!strcmp(end,"-ap.xml.gz")))?v:0; }
 static int long_compare(const void *a, const void *b) { long x=*(const long *)a,y=*(const long *)b;return x<y?-1:x>y; }
-static int complete_snapshot(long time) {
+static int complete_snapshot(long time,const char *extension) {
     char ap[256], client[256], mesh[256];
-    snprintf(ap,sizeof(ap),"%s/%ld-ap.xml",SNAPSHOT_DIR,time);
-    snprintf(client,sizeof(client),"%s/%ld-client.xml",SNAPSHOT_DIR,time);
-    snprintf(mesh,sizeof(mesh),"%s/%ld-mesh.xml",SNAPSHOT_DIR,time);
+    snprintf(ap,sizeof(ap),"%s/%ld-ap.xml%s",SNAPSHOT_DIR,time,extension);
+    snprintf(client,sizeof(client),"%s/%ld-client.xml%s",SNAPSHOT_DIR,time,extension);
+    snprintf(mesh,sizeof(mesh),"%s/%ld-mesh.xml%s",SNAPSHOT_DIR,time,extension);
     return access(ap,R_OK)==0 && access(client,R_OK)==0 && access(mesh,R_OK)==0;
 }
-static int snapshot_index(void) {
-    DIR*d=opendir(SNAPSHOT_DIR);struct dirent*e;long *times;int n=0,i;if(!d){puts("{\"status\":\"ok\",\"snapshots\":[]}");return 0;}times=calloc(50000,sizeof(*times));if(!times){closedir(d);return 1;}
-    while((e=readdir(d))&&n<50000){long t=snapshot_time(e->d_name);if(t&&complete_snapshot(t))times[n++]=t;}closedir(d);qsort(times,n,sizeof(*times),long_compare);
-    fputs("{\"status\":\"ok\",\"snapshots\":[",stdout);for(i=0;i<n;i++){if(i)putchar(',');printf("{\"observed_at\":%ld,\"ap\":\"%ld-ap.xml\",\"client\":\"%ld-client.xml\",\"mesh\":\"%ld-mesh.xml\"}",times[i],times[i],times[i],times[i]);}puts("]}");free(times);return 0;
+static int snapshot_times(void) {
+    DIR*d=opendir(SNAPSHOT_DIR);struct dirent*e;long *times=NULL;size_t n=0,capacity=0,i;
+    if(!d)return 0;
+    while((e=readdir(d))){
+        long t=snapshot_time(e->d_name);long *grown;
+        if(!t||(!complete_snapshot(t,".gz")&&!complete_snapshot(t,"")))continue;
+        if(n==capacity){capacity=capacity?capacity*2:4096;grown=realloc(times,capacity*sizeof(*times));if(!grown){free(times);closedir(d);return 1;}times=grown;}
+        times[n++]=t;
+    }
+    closedir(d);qsort(times,n,sizeof(*times),long_compare);
+    for(i=0;i<n;i++)if(!i||times[i]!=times[i-1])printf("%ld\n",times[i]);
+    free(times);return 0;
 }
 static int prune_snapshots(void) { DIR*d=opendir(SNAPSHOT_DIR);struct dirent*e;long cut=(long)time(NULL)-RETENTION_SECONDS;if(!d)return 0;while((e=readdir(d))){char *dash=strchr(e->d_name,'-');long t=strtol(e->d_name,NULL,10);if(dash&&t>0&&t<cut){char p[512];snprintf(p,sizeof(p),"%s/%s",SNAPSHOT_DIR,e->d_name);unlink(p);}}closedir(d);return 0; }
 int main(int argc,char**argv){
@@ -320,7 +475,7 @@ int main(int argc,char**argv){
     if(argc==5&&strcmp(argv[1],"add-client")==0)return add_client(argv[2],argv[3],argv[4]);
     if(argc==4&&strcmp(argv[1],"set-enabled")==0)return set_enabled(argv[2],argv[3]);
     if(argc==2&&strcmp(argv[1],"pings-json")==0)return pings_json();
-    if(argc==2&&strcmp(argv[1],"snapshot-index")==0)return snapshot_index();
+    if(argc==2&&strcmp(argv[1],"snapshot-times")==0)return snapshot_times();
     if(argc==2&&strcmp(argv[1],"prune-snapshots")==0)return prune_snapshots();
-    fprintf(stderr,"Usage: %s {tick [client.xml]|add-client MAC IP NAME|set-enabled ID 0|1|pings-json|snapshot-index|prune-snapshots}\n",argv[0]);return 2;
+    fprintf(stderr,"Usage: %s {tick [client.xml]|add-client MAC IP NAME|set-enabled ID 0|1|pings-json|snapshot-times|prune-snapshots}\n",argv[0]);return 2;
 }

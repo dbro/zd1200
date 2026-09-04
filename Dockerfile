@@ -62,6 +62,7 @@ RUN dpkg --force-confold --force-architecture -i /packages/*.deb || true \
     && rm -rf /packages
 
 COPY analytics/zd1200-ping-monitor.c \
+     analytics/zd1200-ping-export.c \
      analytics/zd1200-local-getstat.c \
      /src/
 
@@ -72,6 +73,13 @@ RUN mkdir -p /out \
         /src/zd1200-ping-monitor.c \
         "/src/sqlite-amalgamation-${SQLITE_AMALGAMATION}/sqlite3.c" \
         -o /out/zd1200-ping-monitor \
+    && musl-gcc -std=c99 -Os -static -s \
+        -DSQLITE_OMIT_LOAD_EXTENSION \
+        -I"/src/sqlite-amalgamation-${SQLITE_AMALGAMATION}" \
+        /src/zd1200-ping-export.c \
+        "/src/sqlite-amalgamation-${SQLITE_AMALGAMATION}/sqlite3.c" \
+        -lm \
+        -o /out/zd1200-ping-export \
     && musl-gcc -std=c99 -Os -static -s \
         /src/zd1200-local-getstat.c \
         -o /out/zd1200-local-getstat
@@ -112,6 +120,7 @@ COPY --from=ruckus-squashfs-tools \
      /usr/local/lib/zd1200/ruckus-squashfs/
 COPY --from=ping-monitor-helper \
      /out/zd1200-ping-monitor \
+     /out/zd1200-ping-export \
      /out/zd1200-local-getstat \
      /opt/zd1200/
 

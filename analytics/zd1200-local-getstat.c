@@ -19,7 +19,9 @@ static const char *selector_for(const char *kind)
     if (strcmp(kind, "ap") == 0)
         return "<ajax-request><ap LEVEL=\"1\" caller=\"ap-summary\"/></ajax-request>";
     if (strcmp(kind, "client") == 0)
-        return "<ajax-request><client LEVEL=\"1\"/><pieceStat start=\"0\" number=\"300\" pid=\"1\" requestId=\"zd1200.snapshot\"/></ajax-request>";
+        /* Keep this above the 5,000-target collection goal. getstatd emits
+         * one response file, which the monitor deliberately parses once. */
+        return "<ajax-request><client LEVEL=\"1\"/><pieceStat start=\"0\" number=\"6000\" pid=\"1\" requestId=\"zd1200.snapshot\"/></ajax-request>";
     if (strcmp(kind, "mesh") == 0)
         return "<ajax-request><meshview/></ajax-request>";
     return NULL;

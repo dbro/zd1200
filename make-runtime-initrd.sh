@@ -109,9 +109,13 @@ sources=(
     "$work_dir/zd-memory-snapshot.sh"
     "$work_dir/zd_root_ssh.py"
     "$work_dir/analytics/ping-monitor.html"
+    "$work_dir/analytics/ping-monitor-worker.js"
     "$work_dir/analytics/network-snapshot-collect.sh"
+    "$work_dir/analytics/snapshot-index-publish.sh"
     "$work_dir/analytics/ping-monitor-settings-sync.sh"
+    "$work_dir/analytics/ping-daily-publish.sh"
     "$work_dir/zd1200-ping-monitor"
+    "$work_dir/zd1200-ping-export"
     "$work_dir/zd1200-local-getstat"
 )
 if [ -f "$payload" ]; then
@@ -151,9 +155,13 @@ cp "$work_dir/zd-controller-wrapper.sh" "$staging/zd-controller-wrapper.sh"
 cp "$work_dir/zd-memory-snapshot.sh" "$staging/zd-memory-snapshot.sh"
 mkdir -p "$staging/zd-analytics"
 cp "$work_dir/analytics/ping-monitor.html" "$staging/zd-analytics/ping-monitor.html"
+cp "$work_dir/analytics/ping-monitor-worker.js" "$staging/zd-analytics/ping-monitor-worker.js"
 cp "$work_dir/analytics/network-snapshot-collect.sh" "$staging/zd-analytics/network-snapshot-collect.sh"
+cp "$work_dir/analytics/snapshot-index-publish.sh" "$staging/zd-analytics/snapshot-index-publish.sh"
 cp "$work_dir/analytics/ping-monitor-settings-sync.sh" "$staging/zd-analytics/ping-monitor-settings-sync.sh"
+cp "$work_dir/analytics/ping-daily-publish.sh" "$staging/zd-analytics/ping-daily-publish.sh"
 cp "$work_dir/zd1200-ping-monitor" "$staging/zd-analytics/ping-monitor"
+cp "$work_dir/zd1200-ping-export" "$staging/zd-analytics/ping-export"
 cp "$work_dir/zd1200-local-getstat" "$staging/zd-analytics/zd1200-local-getstat"
 
 # Always start UI patching from the exact stock bundles in this release's
@@ -210,9 +218,13 @@ fi
 } > "$staging/zd-runtime-options"
 
 chmod 755 "$staging/bin/boot-handoff" "$staging/zd-analytics/ping-monitor" \
+    "$staging/zd-analytics/ping-export" \
     "$staging/zd-analytics/zd1200-local-getstat" \
+    "$staging/zd-analytics/ping-daily-publish.sh" \
+    "$staging/zd-analytics/snapshot-index-publish.sh" \
     "$staging/zd-analytics/network-snapshot-collect.sh" \
     "$staging/zd-analytics/ping-monitor-settings-sync.sh"
+chmod 644 "$staging/zd-analytics/ping-monitor-worker.js"
 chmod 755 "$staging/zd-controller-wrapper.sh" "$staging/zd-memory-snapshot.sh"
 
 gzip -dc "$base_initrd" > "$combined"
