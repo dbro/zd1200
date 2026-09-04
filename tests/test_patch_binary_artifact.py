@@ -308,9 +308,12 @@ class TacDecryptionTests(unittest.TestCase):
                 decrypt_file(source, destination)
             self.assertEqual(destination.read_bytes(), b"keep")
 
-    def test_tac_file_canonicalizes_word_padding_after_gzip_member(self):
+    def test_tac_file_removes_word_padding_from_final_nibble(self):
         member = gzip.compress(b"synthetic archive", mtime=0)
-        padded = member + b"\x00" * ((-len(member)) % 8)
+        # TAC always word-aligns and records the number of alignment bytes in
+        # the low nibble of the final decoded byte.
+        padding = 8 - (len(member) % 8)
+        padded = member + b"\x00" * (padding - 1) + bytes([padding])
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             source = directory / "encrypted.img"

@@ -18,7 +18,6 @@ import argparse
 import os
 import struct
 import tempfile
-import zlib
 from pathlib import Path
 from typing import BinaryIO
 
@@ -66,31 +65,7 @@ def decrypt_bytes(encrypted: bytes) -> bytes:
     return destination.getvalue()
 
 
-def gzip_member_length(path: Path) -> int | None:
-    """Return the first complete gzip-member length, or ``None`` if not gzip.
-
-    Legacy TAC controller downloads are word-aligned, while their embedded
-    gzip-TAR member need not be. The known ZD1200 fixture has two decoded pad
-    bytes after its member. Keeping only a complete member gives the same
-    canonical output whether the user selects encrypted or decrypted input.
-    """
-    decompressor = zlib.decompressobj(16 + zlib.MAX_WBITS)
-    consumed = 0
-    try:
-        with path.open("rb") as stream:
-            while chunk := stream.read(1024 * 1024):
-                decompressor.decompress(chunk)
-                if decompressor.eof:
-                    return consumed + len(chunk) - len(decompressor.unused_data)
-                consumed += len(chunk)
-    except zlib.error:
-        return None
-    return None
-
-
-def decrypt_file(
-    source_path: Path, destination_path: Path, *, canonicalize_gzip: bool = True
-) -> int:
+def decrypt_file(source_path: Path, destination_path: Path) -> int:
     """Decrypt to a sibling temporary file, replacing destination on success."""
     if source_path.resolve() == destination_path.resolve():
         raise ValueError("source and destination must be different files")
@@ -105,14 +80,20 @@ def decrypt_file(
             written = decrypt_stream(source, destination)
             destination.flush()
             os.fsync(destination.fileno())
-        if canonicalize_gzip:
-            member_length = gzip_member_length(Path(temporary_name))
-            if member_length is not None and member_length < written:
-                with open(temporary_name, "r+b") as destination:
-                    destination.truncate(member_length)
+        # TAC word-aligns its payload. The last decoded byte carries the
+        # number of trailing alignment bytes in its low nibble, so there is
+        # no need to scan the complete gzip member to find its endpoint.
+        if written:
+            with open(temporary_name, "r+b") as destination:
+                destination.seek(-1, os.SEEK_END)
+                padding = destination.read(1)[0] & 0x0F
+                if padding:
+                    if padding > written:
+                        raise ValueError("TAC padding exceeds decrypted output length")
+                    written -= padding
+                    destination.truncate(written)
                     destination.flush()
                     os.fsync(destination.fileno())
-                written = member_length
         os.replace(temporary_name, destination_path)
         return written
     except BaseException:
