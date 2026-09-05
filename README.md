@@ -244,7 +244,7 @@ docker compose up -d --build
 | `ZD_SERIAL` and `ZD_MAC1` | Set a chosen, stable controller identity. Set both before the first start, or leave both unset for a generated persistent identity. |
 | `ZD_WEB_PROBE` | Controls launcher readiness only. Leave it at `auto`: it disables in-container HTTP probing for the normal TAP or macvlan network and enables a local probe for user-mode networking. `on` is not supported with TAP or macvlan. |
 | `ZD_ENABLE_ECDSA_SSH=1` | Adds an ECDSA host key to the ordinary ZoneDirector administrative SSH service while retaining RSA. |
-| `ZD_ENABLE_ROOT_CLI=1` | Enables a local root shell through the authenticated ZD CLI script hook. It does not add a network listener. |
+| `ZD_ENABLE_ROOT_CLI=1` | Enables a local root shell through the Ruckus CLI hidden command `!v54!` and through the series of commands `enable; debug; script; exec .root.sh`. It does not add a network listener. |
 | `ZD_ROOT_SSH_PUBLIC_KEY` | Enables public-key-only root SSH on TCP 2222 for 10.5.1.0.282. RSA and ECDSA keys are accepted; Ed25519 is not. |
 | `ZD_SUPPORT_ENTITLEMENT_END` | Creates a finite support-entitlement record ending on the supplied `YYYY-MM-DD` date. |
 | `ZD_PING_INTERVAL_SECONDS` and `ZD_SNAPSHOT_INTERVAL_SECONDS` | Set the initial 30–3600 second intervals. Both collectors remain disabled until enabled from the Ping Monitor page. |
