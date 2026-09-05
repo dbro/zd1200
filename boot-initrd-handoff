@@ -1430,6 +1430,21 @@ ZD_VSFTPD_INIT
     # can stall indefinitely under QEMU. Keep the rest of controller startup.
     /bin/busybox sed -i 's#^.*\/usr/sbin/irqbalance$#        true#' /newroot/etc/ac_init.sh
     /bin/busybox sed -i 's#echo "start irqbalance\.\.\."#echo "start irqbalance disabled in VM..."; return#' /newroot/etc/ac_init.sh
+    # sesame2 is a hardware-appliance helper that must remain inert in the VM.
+    # /bin/true is a BusyBox multicall symlink, so invoking it through a link
+    # named sesame2 would ask BusyBox for a nonexistent "sesame2" applet.
+    # Preserve the vendor executable and link to a dedicated no-op script.
+    sesame2=/newroot/usr/sbin/sesame2
+    sesame2_vendor=/newroot/usr/sbin/sesame2.vendor
+    sesame2_disabled=/newroot/usr/sbin/sesame2.disabled
+    if [ -f "$sesame2" ] && [ ! -L "$sesame2" ] && [ ! -e "$sesame2_vendor" ]; then
+        /bin/busybox mv "$sesame2" "$sesame2_vendor"
+    fi
+    /bin/busybox sh -c 'printf "#!/bin/sh\nexit 0\n" > /newroot/usr/sbin/sesame2.disabled'
+    /bin/busybox chmod 755 "$sesame2_disabled"
+    /bin/busybox rm -f "$sesame2"
+    /bin/busybox ln -s sesame2.disabled "$sesame2"
+    echo "BOOT-HANDOFF: disabled sesame2 for virtual hardware" >/dev/console
     if [ "$factory_web_patch" -eq 1 ]; then
         # Keep vendor factory web modules intact unless a release-specific
         # boot test proves they need a compatibility patch.

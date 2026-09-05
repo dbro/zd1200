@@ -48,6 +48,13 @@ class ContainerLifecycleTests(unittest.TestCase):
         self.assertIn("e2fsck -f -y /dev/hda4", handoff)
         self.assertIn("refusing to mount it", handoff)
 
+    def test_virtual_guest_permanently_disables_sesame2(self):
+        handoff = (ROOT / "boot-initrd-handoff").read_text()
+        self.assertIn("/newroot/usr/sbin/sesame2.vendor", handoff)
+        self.assertIn("/newroot/usr/sbin/sesame2.disabled", handoff)
+        self.assertIn('ln -s sesame2.disabled "$sesame2"', handoff)
+        self.assertIn("disabled sesame2 for virtual hardware", handoff)
+
     def test_configured_guest_recovers_stock_administrative_ssh(self):
         handoff = (ROOT / "boot-initrd-handoff").read_text()
         self.assertIn("S99zd_dropbear_recovery", handoff)
