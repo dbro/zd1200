@@ -113,8 +113,10 @@ class PingMonitorSettingsTests(unittest.TestCase):
             "airtime-busy",
             "airtime-rx",
             "airtime-tx",
+            "rf-samples",
         ):
             self.assertIn(field, monitor)
+        self.assertIn("rf_samples", monitor)
         self.assertIn("INSERT OR IGNORE INTO zd_event", monitor)
         self.assertIn("event-watermark", monitor)
         self.assertIn("client-live", collector)

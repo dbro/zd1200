@@ -254,13 +254,41 @@ static int export_day(uint32_t start) {
     for(i=0;rc==SQLITE_OK&&i<aps.count;i++)if(!write_bytes(aps.items[i].mac,6))rc=SQLITE_IOERR_WRITE;
     for(i=ap_macs_offset+(uint32_t)aps.count*6U;rc==SQLITE_OK&&i<air24_offset;i++)if(putchar(0)==EOF)rc=SQLITE_IOERR_WRITE;
     sqlite3_finalize(query);query=NULL;
-    if(rc==SQLITE_OK)rc=sqlite3_prepare_v2(db,"SELECT observed_at,radio_id,radio_type,airtime_total_tenths FROM ap_radio_sample WHERE ap_mac=? AND observed_at>=? AND observed_at<? ORDER BY observed_at",-1,&query,NULL);
-    /* Write one target-major matrix for each band. */
+    if(rc==SQLITE_OK)rc=sqlite3_prepare_v2(db,"SELECT observed_at,radio_id,radio_type,airtime_total_tenths,rf_samples FROM ap_radio_sample WHERE ap_mac=? AND observed_at>=? AND observed_at<? ORDER BY observed_at",-1,&query,NULL);
+    /* Write one target-major matrix for each band. airtime_total_tenths is a
+     * raw counter the AP's own radio driver accumulates since its last
+     * internal reset (about every 15 minutes) rather than an instantaneous
+     * reading; rf_samples is the AP's own sample count for that same
+     * accumulation window and resets in lockstep. Averaging the pair over
+     * the whole window since reset would understate recent load right
+     * before a reset and overstate it right after, so instead take the
+     * delta between consecutive same-band polls: Delta(airtime_total) /
+     * Delta(rf_samples). A drop in rf_samples marks a reset, where only that
+     * row's own total/samples ratio is available; an unchanged rf_samples
+     * means this poll landed within the same AP-internal tick as the last
+     * one, so the previous rate is held and the base carried forward
+     * unchanged until a tick actually elapses. */
     for(int band=0;rc==SQLITE_OK&&band<2;band++)for(i=0;rc==SQLITE_OK&&i<aps.count;i++) {
+        int have_base=0,base_total=0,base_samples=0,last_average=0;
         memset(row,0,rounds.count);sqlite3_bind_text(query,1,aps.items[i].mac_text,-1,SQLITE_TRANSIENT);sqlite3_bind_int64(query,2,start);sqlite3_bind_int64(query,3,end);
         while((rc=sqlite3_step(query))==SQLITE_ROW) { size_t position;const char *type=(const char *)sqlite3_column_text(query,2);
-            if(is_five_ghz(sqlite3_column_int(query,1),type)==band&&find_round(&rounds,(uint32_t)sqlite3_column_int64(query,0),&position)&&sqlite3_column_type(query,3)!=SQLITE_NULL)
-                row[position]=(unsigned char)encode_percent_tenths(sqlite3_column_int(query,3));
+            if(is_five_ghz(sqlite3_column_int(query,1),type)!=band)continue;
+            if(sqlite3_column_type(query,3)==SQLITE_NULL||sqlite3_column_type(query,4)==SQLITE_NULL)continue;
+            {
+                int total=sqlite3_column_int(query,3),samples=sqlite3_column_int(query,4),average;
+                if(samples<=0)continue;
+                if(!have_base||samples<base_samples){
+                    average=(total+samples/2)/samples;base_total=total;base_samples=samples;have_base=1;
+                } else if(samples==base_samples){
+                    average=last_average;
+                } else {
+                    int delta_total=total-base_total,delta_samples=samples-base_samples;
+                    average=(delta_total+delta_samples/2)/delta_samples;base_total=total;base_samples=samples;
+                }
+                last_average=average;
+                if(find_round(&rounds,(uint32_t)sqlite3_column_int64(query,0),&position))
+                    row[position]=(unsigned char)encode_percent_tenths(average);
+            }
         }
         if(rc==SQLITE_DONE)rc=SQLITE_OK;if(rc==SQLITE_OK&&!write_bytes(row,rounds.count))rc=SQLITE_IOERR_WRITE;
         sqlite3_reset(query);sqlite3_clear_bindings(query);

@@ -106,7 +106,7 @@ static int schema(sqlite3 *db) {
         "radio_type TEXT,channel INTEGER,channelization INTEGER,clients INTEGER,"
         "noise_floor_dbm INTEGER,avg_snr_db INTEGER,"
         "airtime_total_tenths INTEGER,airtime_busy_tenths INTEGER,"
-        "airtime_rx_tenths INTEGER,airtime_tx_tenths INTEGER,"
+        "airtime_rx_tenths INTEGER,airtime_tx_tenths INTEGER,rf_samples INTEGER,"
         "PRIMARY KEY(observed_at,ap_mac,radio_id));"
         "CREATE INDEX IF NOT EXISTS ap_radio_sample_ap_time ON ap_radio_sample(ap_mac,observed_at);"
         "CREATE TABLE IF NOT EXISTS mesh_link_sample("
@@ -159,6 +159,13 @@ static int schema(sqlite3 *db) {
     sql(db, "ALTER TABLE target ADD COLUMN current_ap TEXT");
     sql(db, "ALTER TABLE target ADD COLUMN current_ssid TEXT");
     sql(db, "ALTER TABLE target ADD COLUMN current_radio TEXT");
+    /* The AP's own airtime-total/busy/rx/tx counters accumulate since the
+     * radio driver's last internal reset (roughly every 15 minutes) rather
+     * than being instantaneous. rf-samples is the AP's own count of samples
+     * folded into that accumulation and resets in lockstep, so retaining it
+     * lets the exporter turn the raw counter back into a windowed average
+     * instead of a sawtooth. */
+    sql(db, "ALTER TABLE ap_radio_sample ADD COLUMN rf_samples INTEGER");
     return SQLITE_OK;
 }
 
@@ -332,7 +339,7 @@ static int ingest_ap_detail(sqlite3 *db,const char *path,time_t observed_at) {
     if(fseek(f,0,SEEK_END)||(size=ftell(f))<0||fseek(f,0,SEEK_SET)){fclose(f);return SQLITE_IOERR;}
     text=malloc((size_t)size+1);if(!text||fread(text,1,(size_t)size,f)!=(size_t)size){free(text);fclose(f);return SQLITE_NOMEM;}
     fclose(f);text[size]=0;
-    rc=sqlite3_prepare_v2(db,"INSERT OR REPLACE INTO ap_radio_sample(observed_at,ap_mac,radio_id,radio_type,channel,channelization,clients,noise_floor_dbm,avg_snr_db,airtime_total_tenths,airtime_busy_tenths,airtime_rx_tenths,airtime_tx_tenths) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",-1,&radio_put,NULL);
+    rc=sqlite3_prepare_v2(db,"INSERT OR REPLACE INTO ap_radio_sample(observed_at,ap_mac,radio_id,radio_type,channel,channelization,clients,noise_floor_dbm,avg_snr_db,airtime_total_tenths,airtime_busy_tenths,airtime_rx_tenths,airtime_tx_tenths,rf_samples) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",-1,&radio_put,NULL);
     if(rc==SQLITE_OK)rc=sqlite3_prepare_v2(db,"INSERT OR REPLACE INTO mesh_link_sample(observed_at,ap_mac,peer_mac,direction,radio_type,snr_db) VALUES(?,?,?,?,?,?)",-1,&mesh_put,NULL);
     ap_tag=text;
     while(rc==SQLITE_OK&&(ap_tag=strstr(ap_tag,"<ap "))!=NULL){
@@ -342,19 +349,20 @@ static int ingest_ap_detail(sqlite3 *db,const char *path,time_t observed_at) {
         if(ap_mac&&valid_mac(ap_mac)){
             cursor=ap_head_end+1;
             while(rc==SQLITE_OK&&(cursor=strstr(cursor,"<radio "))!=NULL&&cursor<ap_end){
-                char *end=strchr(cursor,'>'),*id,*type,*channel,*width,*clients,*noise,*average,*total,*busy,*rx,*tx;
+                char *end=strchr(cursor,'>'),*id,*type,*channel,*width,*clients,*noise,*average,*total,*busy,*rx,*tx,*samples;
                 if(!end||end>ap_end)break;
                 id=attr(cursor,end,"radio-id");type=attr(cursor,end,"radio-type");channel=attr(cursor,end,"channel");
                 width=attr(cursor,end,"channelization");clients=attr(cursor,end,"assoc-stas");noise=attr(cursor,end,"noisefloor");
                 average=attr(cursor,end,"avg-rssi");total=attr(cursor,end,"airtime-total");busy=attr(cursor,end,"airtime-busy");
-                rx=attr(cursor,end,"airtime-rx");tx=attr(cursor,end,"airtime-tx");
+                rx=attr(cursor,end,"airtime-rx");tx=attr(cursor,end,"airtime-tx");samples=attr(cursor,end,"rf-samples");
                 sqlite3_bind_int64(radio_put,1,observed_at);sqlite3_bind_text(radio_put,2,ap_mac,-1,SQLITE_TRANSIENT);
                 bind_optional_int(radio_put,3,id);if(type)sqlite3_bind_text(radio_put,4,type,-1,SQLITE_TRANSIENT);else sqlite3_bind_null(radio_put,4);
                 bind_optional_int(radio_put,5,channel);bind_optional_int(radio_put,6,width);bind_optional_int(radio_put,7,clients);
                 bind_optional_int(radio_put,8,noise);bind_optional_int(radio_put,9,average);bind_optional_int(radio_put,10,total);
                 bind_optional_int(radio_put,11,busy);bind_optional_int(radio_put,12,rx);bind_optional_int(radio_put,13,tx);
+                bind_optional_int(radio_put,14,samples);
                 rc=sqlite3_step(radio_put)==SQLITE_DONE?sqlite3_reset(radio_put):SQLITE_ERROR;sqlite3_clear_bindings(radio_put);
-                free(id);free(type);free(channel);free(width);free(clients);free(noise);free(average);free(total);free(busy);free(rx);free(tx);cursor=end+1;
+                free(id);free(type);free(channel);free(width);free(clients);free(noise);free(average);free(total);free(busy);free(rx);free(tx);free(samples);cursor=end+1;
             }
             cursor=ap_head_end+1;
             while(rc==SQLITE_OK&&cursor<ap_end){

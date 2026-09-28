@@ -283,9 +283,16 @@ and all AP LEVEL=2 telemetry in a second bulk request. Each ping observation
 retains the client's contemporaneous SNR, received signal level, and noise
 floor. Per-radio AP samples retain channel, client count, noise/SNR, and the
 four airtime values (total, busy, RX, and TX) in the vendor's original tenths
-of a percentage point. Mesh uplink/downlink SNR is retained separately. These
-two live XML responses are replaced atomically and are not historical data;
-only their compact extracted fields are retained in SQLite.
+of a percentage point, alongside the AP's own `rf-samples` counter. The
+airtime counters are cumulative since the radio driver's last internal reset
+(observed at roughly a 15-minute cadence) rather than instantaneous, and
+`rf-samples` resets in lockstep; the daily export takes the delta between
+consecutive same-band polls (`Δairtime / Δrf-samples`) instead of encoding
+the raw counter directly, so the published value tracks recent airtime
+rather than sawtoothing with the reset or smoothing over the whole window.
+Mesh uplink/downlink SNR is retained separately. These two live XML responses are
+replaced atomically and are not historical data; only their compact extracted
+fields are retained in SQLite.
 
 Event ingestion has been investigated, but it is deliberately not scheduled or
 shown in this prototype. AP, client, and mesh configuration snapshots are
